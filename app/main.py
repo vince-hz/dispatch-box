@@ -36,7 +36,9 @@ from .services.outbounds import (
     update_outbound,
 )
 from .services.singbox import (
+    build_clash_subscription_bundle,
     build_full_config,
+    ensure_clash_template_file,
     build_shadowrocket_subscription_bundle,
     build_subscription_bundle,
     check_singbox_config,
@@ -82,6 +84,7 @@ app.add_middleware(
 @app.on_event("startup")
 def startup() -> None:
     ensure_base_config_file()
+    ensure_clash_template_file()
 
 
 app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
@@ -358,6 +361,7 @@ def api_download_links() -> dict[str, str]:
         "subscription_outbounds": f"/downloads/subscription-outbounds.json{query}",
         "overlay": f"/downloads/singbox-overlay.json{query}",
         "shadowrocket_subscription": f"/downloads/shadowrocket-sub.txt{query}",
+        "clash_subscription": f"/downloads/clash.yaml{query}",
     }
 
 
@@ -389,6 +393,17 @@ def download_shadowrocket_subscription(token: str | None = Query(default=None)) 
         "Content-Disposition": "attachment; filename=shadowrocket-sub.txt",
     }
     return PlainTextResponse(content=body, headers=headers)
+
+
+@app.get("/downloads/clash.yaml")
+def download_clash_subscription(token: str | None = Query(default=None)) -> PlainTextResponse:
+    _assert_download_token(token)
+    outbounds = list_subscription_cached_outbounds(enabled_only=True) + list_static_ladder_outbounds(enabled_only=True)
+    body = build_clash_subscription_bundle(outbounds)
+    headers = {
+        "Content-Disposition": "attachment; filename=clash.yaml",
+    }
+    return PlainTextResponse(content=body, headers=headers, media_type="application/yaml")
 
 
 @app.get("/downloads/singbox-overlay.json")

@@ -21,6 +21,7 @@
   - `/downloads/subscriptions.txt`（订阅原始地址清单）
   - `/downloads/subscription-outbounds.json`（订阅解析后的 sing-box outbounds）
   - `/downloads/shadowrocket-sub.txt`（供 Shadowrocket 订阅使用，内容为 Base64 编码的节点链接集合）
+  - `/downloads/clash.yaml`（供 Clash/Mihomo 订阅使用，由 `data/clash_template.json` + 动态节点生成）
   - `/downloads/singbox-overlay.json`（`data/base_config.json` + 动态 outbounds 合并后的完整配置）
 - `sing-box` 静态检测：
   - 一键执行 `sing-box check -c <generated-config>` 检测当前聚合配置是否合法
@@ -83,6 +84,8 @@ make run
 - 面板只负责订阅、静态梯子、聚合 outbounds。
 - 分流规则、`rule_set`、DNS、实验配置等请直接写在 `data/base_config.json`。
 - `/downloads/singbox-overlay.json` 会读取 `data/base_config.json`，并将最终 `outbounds` 覆盖写入。
+- `/downloads/clash.yaml` 会读取 `data/clash_template.json`，并将 `proxies` 覆盖写入。
 - 覆盖顺序为：订阅节点 -> 静态梯子 -> 已启用聚合 outbounds（同 tag 后者覆盖前者）。
 - 机场订阅数据独立存储于 `data/provider.json`。
 - 若 `data/base_config.json` 不存在，启动时会自动创建默认文件。
+- 若 `data/clash_template.json` 不存在，启动时会自动创建默认文件。

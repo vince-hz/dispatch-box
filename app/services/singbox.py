@@ -15,11 +15,36 @@ from urllib.parse import quote, urlencode
 from ..config import DATA_DIR
 
 BASE_CONFIG_PATH = Path(DATA_DIR) / "base_config.json"
+CLASH_TEMPLATE_PATH = Path(DATA_DIR) / "clash_template.json"
 DEFAULT_BASE_CONFIG: dict[str, Any] = {
     "route": {
         "rules": [],
         "rule_set": [],
     }
+}
+DEFAULT_CLASH_TEMPLATE: dict[str, Any] = {
+    "mixed-port": 7890,
+    "allow-lan": False,
+    "mode": "rule",
+    "log-level": "info",
+    "proxies": [],
+    "proxy-groups": [
+        {
+            "name": "Proxy",
+            "type": "select",
+            "proxies": ["DIRECT"],
+            "includeAllProxies": True,
+        },
+        {
+            "name": "Auto",
+            "type": "url-test",
+            "url": "https://www.gstatic.com/generate_204",
+            "interval": 300,
+            "tolerance": 50,
+            "includeAllProxies": True,
+        },
+    ],
+    "rules": ["MATCH,Proxy"],
 }
 
 
@@ -41,6 +66,27 @@ def load_base_config() -> dict[str, Any]:
         return deepcopy(DEFAULT_BASE_CONFIG)
     if not isinstance(raw, dict):
         return deepcopy(DEFAULT_BASE_CONFIG)
+    return raw
+
+
+def ensure_clash_template_file() -> None:
+    if CLASH_TEMPLATE_PATH.exists():
+        return
+    CLASH_TEMPLATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CLASH_TEMPLATE_PATH.write_text(
+        json.dumps(DEFAULT_CLASH_TEMPLATE, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def load_clash_template() -> dict[str, Any]:
+    ensure_clash_template_file()
+    try:
+        raw = json.loads(CLASH_TEMPLATE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return deepcopy(DEFAULT_CLASH_TEMPLATE)
+    if not isinstance(raw, dict):
+        return deepcopy(DEFAULT_CLASH_TEMPLATE)
     return raw
 
 
@@ -129,6 +175,36 @@ def _normalize_plugin_opts_text(raw: Any) -> str:
             continue
         parts.append(f"{k}={v}")
     return ";".join(parts)
+
+
+def _parse_plugin_opts_map(raw: Any) -> dict[str, str]:
+    if isinstance(raw, dict):
+        result: dict[str, str] = {}
+        for key in sorted(raw.keys()):
+            k = str(key or "").strip()
+            if not k:
+                continue
+            v = str(raw.get(key) or "").strip()
+            if not v:
+                continue
+            result[k] = v
+        return result
+
+    if not isinstance(raw, str):
+        return {}
+
+    result: dict[str, str] = {}
+    segments = [part.strip() for part in raw.split(";") if part.strip()]
+    for segment in segments:
+        if "=" not in segment:
+            continue
+        key, value = segment.split("=", 1)
+        k = key.strip()
+        v = value.strip()
+        if not k or not v:
+            continue
+        result[k] = v
+    return result
 
 
 def _normalize_shadowsocks_plugin_fields(outbound: dict[str, Any]) -> None:
@@ -303,15 +379,14 @@ def _share_ss(outbound: dict[str, Any]) -> str | None:
     userinfo = f"{method}:{password}@{server}:{port}"
     encoded_userinfo = base64.urlsafe_b64encode(userinfo.encode("utf-8")).decode("utf-8").rstrip("=")
 
-    plugin = _string(outbound.get("plugin"))
-    plugin_opts_raw = outbound.get("plugin_opts")
-    plugin_opts = plugin_opts_raw if isinstance(plugin_opts_raw, dict) else {}
+    plugin = _string(outbound.get("plugin")).lower()
+    plugin_opts = _parse_plugin_opts_map(outbound.get("plugin_opts"))
     query: dict[str, str] = {}
     if plugin:
-        if plugin == "obfs":
+        if plugin in {"obfs", "obfs-local", "simple-obfs", "simpleobfs"}:
             segments = ["obfs-local"]
-            mode = _string(plugin_opts.get("mode"))
-            host = _string(plugin_opts.get("host"))
+            mode = _string(plugin_opts.get("mode") or plugin_opts.get("obfs"))
+            host = _string(plugin_opts.get("host") or plugin_opts.get("obfs-host"))
             if mode:
                 segments.append(f"obfs={mode}")
             if host:
@@ -538,6 +613,378 @@ def build_shadowrocket_subscription_bundle(outbounds: list[dict[str, Any]]) -> s
     raw_text = "\n".join(links)
     encoded = base64.b64encode(raw_text.encode("utf-8")).decode("utf-8")
     return encoded + "\n"
+
+
+def _clash_ws_opts(transport: dict[str, Any]) -> dict[str, Any]:
+    ws_opts: dict[str, Any] = {
+        "path": _string(transport.get("path")) or "/",
+    }
+    headers = transport.get("headers")
+    if isinstance(headers, dict):
+        host = _string(headers.get("Host"))
+        if host:
+            ws_opts["headers"] = {"Host": host}
+    return ws_opts
+
+
+def _clash_grpc_opts(transport: dict[str, Any]) -> dict[str, Any]:
+    service_name = _string(transport.get("service_name"))
+    if not service_name:
+        return {}
+    return {
+        "grpc-service-name": service_name,
+    }
+
+
+def singbox_outbound_to_clash_proxy(outbound: dict[str, Any]) -> dict[str, Any] | None:
+    outbound_type = _string(outbound.get("type")).lower()
+    name = _string(outbound.get("tag"))
+    server = _string(outbound.get("server"))
+    port = _safe_int(outbound.get("server_port"), 0)
+    if not name or not server or port <= 0:
+        return None
+
+    tls_raw = outbound.get("tls")
+    tls = tls_raw if isinstance(tls_raw, dict) else {}
+    transport_raw = outbound.get("transport")
+    transport = transport_raw if isinstance(transport_raw, dict) else {}
+    transport_type = _string(transport.get("type")).lower()
+
+    if outbound_type == "shadowsocks":
+        cipher = _string(outbound.get("method"))
+        password = _string(outbound.get("password"))
+        if not cipher or not password:
+            return None
+        proxy: dict[str, Any] = {
+            "name": name,
+            "type": "ss",
+            "server": server,
+            "port": port,
+            "cipher": cipher,
+            "password": password,
+            "udp": True,
+        }
+
+        plugin = _string(outbound.get("plugin")).lower()
+        plugin_opts = _parse_plugin_opts_map(outbound.get("plugin_opts"))
+        if plugin in {"obfs", "obfs-local", "simple-obfs", "simpleobfs"}:
+            proxy["plugin"] = "obfs"
+            plugin_opts_item: dict[str, Any] = {}
+            mode = _string(plugin_opts.get("mode") or plugin_opts.get("obfs"))
+            host = _string(plugin_opts.get("host") or plugin_opts.get("obfs-host"))
+            if mode:
+                plugin_opts_item["mode"] = mode
+            if host:
+                plugin_opts_item["host"] = host
+            if plugin_opts_item:
+                proxy["plugin-opts"] = plugin_opts_item
+        elif plugin:
+            proxy["plugin"] = plugin
+            if plugin_opts:
+                proxy["plugin-opts"] = plugin_opts
+
+        return proxy
+
+    if outbound_type == "trojan":
+        password = _string(outbound.get("password"))
+        if not password:
+            return None
+        proxy = {
+            "name": name,
+            "type": "trojan",
+            "server": server,
+            "port": port,
+            "password": password,
+            "udp": True,
+        }
+        server_name = _string(tls.get("server_name"))
+        if server_name:
+            proxy["sni"] = server_name
+        if tls.get("insecure"):
+            proxy["skip-cert-verify"] = True
+
+        if transport_type == "ws":
+            proxy["network"] = "ws"
+            proxy["ws-opts"] = _clash_ws_opts(transport)
+        elif transport_type == "grpc":
+            proxy["network"] = "grpc"
+            grpc_opts = _clash_grpc_opts(transport)
+            if grpc_opts:
+                proxy["grpc-opts"] = grpc_opts
+
+        return proxy
+
+    if outbound_type == "vmess":
+        uuid = _string(outbound.get("uuid"))
+        if not uuid:
+            return None
+        proxy = {
+            "name": name,
+            "type": "vmess",
+            "server": server,
+            "port": port,
+            "uuid": uuid,
+            "alterId": _safe_int(outbound.get("alter_id"), 0),
+            "cipher": _string(outbound.get("security")) or "auto",
+            "udp": True,
+        }
+
+        if tls.get("enabled"):
+            proxy["tls"] = True
+            server_name = _string(tls.get("server_name"))
+            if server_name:
+                proxy["servername"] = server_name
+            if tls.get("insecure"):
+                proxy["skip-cert-verify"] = True
+
+        if transport_type == "ws":
+            proxy["network"] = "ws"
+            proxy["ws-opts"] = _clash_ws_opts(transport)
+        elif transport_type == "grpc":
+            proxy["network"] = "grpc"
+            grpc_opts = _clash_grpc_opts(transport)
+            if grpc_opts:
+                proxy["grpc-opts"] = grpc_opts
+
+        return proxy
+
+    if outbound_type == "vless":
+        uuid = _string(outbound.get("uuid"))
+        if not uuid:
+            return None
+        proxy = {
+            "name": name,
+            "type": "vless",
+            "server": server,
+            "port": port,
+            "uuid": uuid,
+            "udp": True,
+        }
+
+        flow = _string(outbound.get("flow"))
+        if flow:
+            proxy["flow"] = flow
+
+        if tls.get("enabled"):
+            proxy["tls"] = True
+            server_name = _string(tls.get("server_name"))
+            if server_name:
+                proxy["servername"] = server_name
+            if tls.get("insecure"):
+                proxy["skip-cert-verify"] = True
+
+        if transport_type == "ws":
+            proxy["network"] = "ws"
+            proxy["ws-opts"] = _clash_ws_opts(transport)
+        elif transport_type == "grpc":
+            proxy["network"] = "grpc"
+            grpc_opts = _clash_grpc_opts(transport)
+            if grpc_opts:
+                proxy["grpc-opts"] = grpc_opts
+
+        return proxy
+
+    if outbound_type == "hysteria2":
+        proxy = {
+            "name": name,
+            "type": "hysteria2",
+            "server": server,
+            "port": port,
+            "udp": True,
+        }
+        password = _string(outbound.get("password"))
+        if password:
+            proxy["password"] = password
+        server_name = _string(tls.get("server_name"))
+        if server_name:
+            proxy["sni"] = server_name
+        if tls.get("insecure"):
+            proxy["skip-cert-verify"] = True
+
+        obfs_raw = outbound.get("obfs")
+        obfs = obfs_raw if isinstance(obfs_raw, dict) else {}
+        obfs_type = _string(obfs.get("type"))
+        if obfs_type:
+            proxy["obfs"] = obfs_type
+        obfs_password = _string(obfs.get("password"))
+        if obfs_password:
+            proxy["obfs-password"] = obfs_password
+
+        return proxy
+
+    return None
+
+
+def _ensure_unique_clash_proxy_names(proxies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    used: set[str] = set()
+    result: list[dict[str, Any]] = []
+
+    for row in proxies:
+        if not isinstance(row, dict):
+            continue
+        base = _string(row.get("name")) or "node"
+        name = base
+        suffix = 2
+        while name in used:
+            name = f"{base}-{suffix}"
+            suffix += 1
+        used.add(name)
+
+        updated = dict(row)
+        updated["name"] = name
+        result.append(updated)
+
+    return result
+
+
+def _normalize_string_list(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        value = _string(item)
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _normalize_clash_proxy_groups(raw: Any, proxy_names: list[str]) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+
+    groups: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+
+        group = dict(item)
+        name = _string(group.get("name"))
+        group_type = _string(group.get("type")).lower()
+        if group_type == "urltest":
+            group_type = "url-test"
+        if not name or not group_type:
+            continue
+
+        include_all = _parse_bool(group.pop("includeAllProxies", False), False)
+        if "include_all_proxies" in group:
+            include_all = _parse_bool(group.pop("include_all_proxies"), include_all)
+
+        proxies = _normalize_string_list(group.get("proxies"))
+        if include_all:
+            proxies = _merge_outbound_tags(proxies, proxy_names)
+        if group_type in {"select", "url-test", "fallback", "load-balance", "relay"}:
+            if not proxies:
+                proxies = list(proxy_names) if proxy_names else ["DIRECT"]
+            if group_type == "select" and "DIRECT" not in proxies:
+                proxies.append("DIRECT")
+            proxies = _merge_outbound_tags([], proxies)
+            group["proxies"] = proxies
+
+        group["name"] = name
+        group["type"] = group_type
+        groups.append(group)
+
+    return groups
+
+
+def _normalize_clash_rules(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    result: list[str] = []
+    for item in raw:
+        line = _string(item)
+        if not line:
+            continue
+        result.append(line)
+    return result
+
+
+def _yaml_key(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _yaml_scalar(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return json.dumps(str(value), ensure_ascii=False)
+
+
+def _to_yaml(value: Any, indent: int = 0) -> str:
+    prefix = " " * indent
+
+    if isinstance(value, dict):
+        if not value:
+            return prefix + "{}"
+        lines: list[str] = []
+        for key, item in value.items():
+            key_text = _yaml_key(str(key))
+            if isinstance(item, dict) and not item:
+                lines.append(f"{prefix}{key_text}: {{}}")
+                continue
+            if isinstance(item, list) and not item:
+                lines.append(f"{prefix}{key_text}: []")
+                continue
+            if isinstance(item, (dict, list)):
+                lines.append(f"{prefix}{key_text}:")
+                lines.append(_to_yaml(item, indent + 2))
+            else:
+                lines.append(f"{prefix}{key_text}: {_yaml_scalar(item)}")
+        return "\n".join(lines)
+
+    if isinstance(value, list):
+        if not value:
+            return prefix + "[]"
+        lines = []
+        for item in value:
+            if isinstance(item, (dict, list)):
+                lines.append(f"{prefix}-")
+                lines.append(_to_yaml(item, indent + 2))
+            else:
+                lines.append(f"{prefix}- {_yaml_scalar(item)}")
+        return "\n".join(lines)
+
+    return prefix + _yaml_scalar(value)
+
+
+def build_clash_subscription_config(outbounds: list[dict[str, Any]]) -> dict[str, Any]:
+    template = load_clash_template()
+    result = deepcopy(template if isinstance(template, dict) else {})
+
+    proxies: list[dict[str, Any]] = []
+    for outbound in outbounds:
+        if not isinstance(outbound, dict):
+            continue
+        proxy = singbox_outbound_to_clash_proxy(outbound)
+        if proxy:
+            proxies.append(proxy)
+
+    proxies = _ensure_unique_clash_proxy_names(proxies)
+    proxy_names = [str(item["name"]) for item in proxies if str(item.get("name") or "").strip()]
+    result["proxies"] = proxies
+
+    proxy_groups = _normalize_clash_proxy_groups(result.get("proxy-groups"), proxy_names)
+    if not proxy_groups:
+        proxy_groups = _normalize_clash_proxy_groups(DEFAULT_CLASH_TEMPLATE.get("proxy-groups"), proxy_names)
+    result["proxy-groups"] = proxy_groups
+
+    rules = _normalize_clash_rules(result.get("rules"))
+    if not rules:
+        rules = ["MATCH,Proxy"]
+    result["rules"] = rules
+
+    return result
+
+
+def build_clash_subscription_bundle(outbounds: list[dict[str, Any]]) -> str:
+    config = build_clash_subscription_config(outbounds)
+    return _to_yaml(config) + "\n"
 
 
 def check_singbox_config(config: dict[str, Any]) -> dict[str, Any]:

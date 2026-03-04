@@ -50,6 +50,7 @@ const previewOverlayResultBtn = document.querySelector('#previewOverlayResultBtn
 const getOverlayDownloadLinkBtn = document.querySelector('#getOverlayDownloadLinkBtn');
 const getUpdatedOverlayDownloadLinkBtn = document.querySelector('#getUpdatedOverlayDownloadLinkBtn');
 const getShadowrocketDownloadLinkBtn = document.querySelector('#getShadowrocketDownloadLinkBtn');
+const getClashDownloadLinkBtn = document.querySelector('#getClashDownloadLinkBtn');
 
 const AGGREGATE_OUTBOUND_TYPES = new Set(['selector', 'urltest', 'direct']);
 const DEFAULT_OUTBOUND_PAYLOAD = Object.freeze({
@@ -1423,6 +1424,14 @@ async function resolveShadowrocketDownloadUrl() {
   ).toString();
 }
 
+async function resolveClashDownloadUrl() {
+  const links = await api('/api/download-links');
+  return new URL(
+    links.clash_subscription || '/downloads/clash.yaml',
+    window.location.origin,
+  ).toString();
+}
+
 async function fetchOverlayResultJson() {
   const overlayUrl = await resolveOverlayDownloadUrl();
   const response = await fetch(overlayUrl, {
@@ -1557,6 +1566,20 @@ if (getShadowrocketDownloadLinkBtn) {
       });
     } catch (error) {
       showToast(`获取 Shadowrocket 链接失败: ${error.message}`, true);
+    }
+  });
+}
+
+if (getClashDownloadLinkBtn) {
+  getClashDownloadLinkBtn.addEventListener('click', async () => {
+    try {
+      const clashUrl = await resolveClashDownloadUrl();
+      await presentOverlayDownloadUrl(clashUrl, {
+        copiedMessage: 'Clash 订阅链接已复制到剪贴板',
+        generatedMessage: 'Clash 订阅链接已生成',
+      });
+    } catch (error) {
+      showToast(`获取 Clash 链接失败: ${error.message}`, true);
     }
   });
 }
