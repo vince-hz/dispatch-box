@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
@@ -9,6 +10,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, urlencode
 
 from ..config import DATA_DIR
 
@@ -105,9 +107,55 @@ def _normalize_raw_outbound_list(raw_list: list[dict[str, Any]] | None) -> list[
 
         cleaned["tag"] = tag
         cleaned["type"] = outbound_type
+        _normalize_shadowsocks_plugin_fields(cleaned)
         result.append(cleaned)
 
     return result
+
+
+def _normalize_plugin_opts_text(raw: Any) -> str:
+    if isinstance(raw, str):
+        return raw.strip()
+    if not isinstance(raw, dict):
+        return ""
+
+    parts: list[str] = []
+    for key in sorted(raw.keys()):
+        k = str(key or "").strip()
+        if not k:
+            continue
+        v = str(raw.get(key) or "").strip()
+        if not v:
+            continue
+        parts.append(f"{k}={v}")
+    return ";".join(parts)
+
+
+def _normalize_shadowsocks_plugin_fields(outbound: dict[str, Any]) -> None:
+    if str(outbound.get("type") or "").strip().lower() != "shadowsocks":
+        return
+
+    plugin = str(outbound.get("plugin") or "").strip().lower()
+    plugin_opts_raw = outbound.get("plugin_opts")
+
+    # sing-box expects plugin name `obfs-local` and string `plugin_opts`.
+    if plugin in {"obfs", "simple-obfs", "simpleobfs"}:
+        outbound["plugin"] = "obfs-local"
+
+        if isinstance(plugin_opts_raw, dict):
+            mode = str(plugin_opts_raw.get("mode") or plugin_opts_raw.get("obfs") or "").strip()
+            host = str(plugin_opts_raw.get("host") or plugin_opts_raw.get("obfs-host") or "").strip()
+            parts: list[str] = []
+            if mode:
+                parts.append(f"obfs={mode}")
+            if host:
+                parts.append(f"obfs-host={host}")
+            outbound["plugin_opts"] = ";".join(parts)
+            return
+
+    if plugin_opts_raw is None:
+        return
+    outbound["plugin_opts"] = _normalize_plugin_opts_text(plugin_opts_raw)
 
 
 def outbound_to_singbox_outbound(
@@ -210,6 +258,286 @@ def build_subscription_bundle(subscriptions: list[dict[str, Any]]) -> str:
     enabled = [sub for sub in subscriptions if sub["enabled"]]
     lines = [f"# {item['name']}\n{item['url']}" for item in enabled]
     return "\n\n".join(lines).strip() + ("\n" if lines else "")
+
+
+def _format_uri_host(host: str) -> str:
+    value = str(host or "").strip()
+    if not value:
+        return ""
+    if ":" in value and not (value.startswith("[") and value.endswith("]")):
+        return f"[{value}]"
+    return value
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _string(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _build_query(params: dict[str, Any]) -> str:
+    filtered: dict[str, str] = {}
+    for key, value in params.items():
+        text = _string(value)
+        if text:
+            filtered[key] = text
+    if not filtered:
+        return ""
+    return "?" + urlencode(filtered, quote_via=quote)
+
+
+def _share_ss(outbound: dict[str, Any]) -> str | None:
+    method = _string(outbound.get("method"))
+    password = _string(outbound.get("password"))
+    server = _format_uri_host(_string(outbound.get("server")))
+    port = _safe_int(outbound.get("server_port"), 0)
+    tag = _string(outbound.get("tag")) or f"{server}:{port}"
+    if not method or not password or not server or port <= 0:
+        return None
+
+    userinfo = f"{method}:{password}@{server}:{port}"
+    encoded_userinfo = base64.urlsafe_b64encode(userinfo.encode("utf-8")).decode("utf-8").rstrip("=")
+
+    plugin = _string(outbound.get("plugin"))
+    plugin_opts_raw = outbound.get("plugin_opts")
+    plugin_opts = plugin_opts_raw if isinstance(plugin_opts_raw, dict) else {}
+    query: dict[str, str] = {}
+    if plugin:
+        if plugin == "obfs":
+            segments = ["obfs-local"]
+            mode = _string(plugin_opts.get("mode"))
+            host = _string(plugin_opts.get("host"))
+            if mode:
+                segments.append(f"obfs={mode}")
+            if host:
+                segments.append(f"obfs-host={host}")
+            query["plugin"] = ";".join(segments)
+        else:
+            segments = [plugin]
+            for key in sorted(plugin_opts.keys()):
+                k = _string(key)
+                if not k:
+                    continue
+                v = _string(plugin_opts.get(key))
+                if not v:
+                    continue
+                segments.append(f"{k}={v}")
+            query["plugin"] = ";".join(segments)
+
+    return f"ss://{encoded_userinfo}{_build_query(query)}#{quote(tag, safe='')}"
+
+
+def _share_trojan(outbound: dict[str, Any]) -> str | None:
+    password = _string(outbound.get("password"))
+    server = _format_uri_host(_string(outbound.get("server")))
+    port = _safe_int(outbound.get("server_port"), 0)
+    tag = _string(outbound.get("tag")) or f"{server}:{port}"
+    if not password or not server or port <= 0:
+        return None
+
+    query: dict[str, Any] = {}
+    tls_raw = outbound.get("tls")
+    tls = tls_raw if isinstance(tls_raw, dict) else {}
+    if tls.get("enabled"):
+        query["security"] = "tls"
+    if tls.get("insecure"):
+        query["allowInsecure"] = "1"
+    if tls.get("server_name"):
+        query["sni"] = tls.get("server_name")
+    if isinstance(tls.get("alpn"), list):
+        alpn = [str(item).strip() for item in tls.get("alpn") if str(item).strip()]
+        if alpn:
+            query["alpn"] = ",".join(alpn)
+
+    transport_raw = outbound.get("transport")
+    transport = transport_raw if isinstance(transport_raw, dict) else {}
+    transport_type = _string(transport.get("type")).lower()
+    if transport_type == "ws":
+        query["type"] = "ws"
+        query["path"] = _string(transport.get("path")) or "/"
+        headers = transport.get("headers")
+        if isinstance(headers, dict):
+            host = _string(headers.get("Host"))
+            if host:
+                query["host"] = host
+    elif transport_type == "grpc":
+        query["type"] = "grpc"
+        query["serviceName"] = _string(transport.get("service_name"))
+
+    return (
+        f"trojan://{quote(password, safe='')}@{server}:{port}"
+        f"{_build_query(query)}"
+        f"#{quote(tag, safe='')}"
+    )
+
+
+def _share_vmess(outbound: dict[str, Any]) -> str | None:
+    server = _string(outbound.get("server"))
+    port = _safe_int(outbound.get("server_port"), 0)
+    uuid = _string(outbound.get("uuid"))
+    tag = _string(outbound.get("tag")) or f"{server}:{port}"
+    if not server or port <= 0 or not uuid:
+        return None
+
+    vmess: dict[str, str] = {
+        "v": "2",
+        "ps": tag,
+        "add": server,
+        "port": str(port),
+        "id": uuid,
+        "aid": str(_safe_int(outbound.get("alter_id"), 0)),
+        "scy": _string(outbound.get("security")) or "auto",
+        "net": "tcp",
+        "type": "none",
+        "host": "",
+        "path": "",
+        "tls": "",
+    }
+
+    tls_raw = outbound.get("tls")
+    tls = tls_raw if isinstance(tls_raw, dict) else {}
+    if tls.get("enabled"):
+        vmess["tls"] = "tls"
+    server_name = _string(tls.get("server_name"))
+    if server_name:
+        vmess["sni"] = server_name
+
+    transport_raw = outbound.get("transport")
+    transport = transport_raw if isinstance(transport_raw, dict) else {}
+    transport_type = _string(transport.get("type")).lower()
+    if transport_type == "ws":
+        vmess["net"] = "ws"
+        vmess["path"] = _string(transport.get("path")) or "/"
+        headers = transport.get("headers")
+        if isinstance(headers, dict):
+            vmess["host"] = _string(headers.get("Host"))
+    elif transport_type == "grpc":
+        vmess["net"] = "grpc"
+        vmess["path"] = _string(transport.get("service_name"))
+
+    payload = json.dumps(vmess, ensure_ascii=False, separators=(",", ":"))
+    encoded = base64.b64encode(payload.encode("utf-8")).decode("utf-8")
+    return f"vmess://{encoded}"
+
+
+def _share_vless(outbound: dict[str, Any]) -> str | None:
+    server = _format_uri_host(_string(outbound.get("server")))
+    port = _safe_int(outbound.get("server_port"), 0)
+    uuid = _string(outbound.get("uuid"))
+    tag = _string(outbound.get("tag")) or f"{server}:{port}"
+    if not server or port <= 0 or not uuid:
+        return None
+
+    query: dict[str, Any] = {"encryption": "none"}
+    tls_raw = outbound.get("tls")
+    tls = tls_raw if isinstance(tls_raw, dict) else {}
+    if tls.get("enabled"):
+        utls_raw = tls.get("utls")
+        utls = utls_raw if isinstance(utls_raw, dict) else {}
+        query["security"] = "reality" if utls.get("enabled") else "tls"
+    if tls.get("server_name"):
+        query["sni"] = tls.get("server_name")
+    if isinstance(tls.get("alpn"), list):
+        alpn = [str(item).strip() for item in tls.get("alpn") if str(item).strip()]
+        if alpn:
+            query["alpn"] = ",".join(alpn)
+    if tls.get("insecure"):
+        query["allowInsecure"] = "1"
+    flow = _string(outbound.get("flow"))
+    if flow:
+        query["flow"] = flow
+
+    transport_raw = outbound.get("transport")
+    transport = transport_raw if isinstance(transport_raw, dict) else {}
+    transport_type = _string(transport.get("type")).lower()
+    if transport_type == "ws":
+        query["type"] = "ws"
+        query["path"] = _string(transport.get("path")) or "/"
+        headers = transport.get("headers")
+        if isinstance(headers, dict):
+            host = _string(headers.get("Host"))
+            if host:
+                query["host"] = host
+    elif transport_type == "grpc":
+        query["type"] = "grpc"
+        query["serviceName"] = _string(transport.get("service_name"))
+
+    return (
+        f"vless://{quote(uuid, safe='')}@{server}:{port}"
+        f"{_build_query(query)}"
+        f"#{quote(tag, safe='')}"
+    )
+
+
+def _share_hysteria2(outbound: dict[str, Any]) -> str | None:
+    server = _format_uri_host(_string(outbound.get("server")))
+    port = _safe_int(outbound.get("server_port"), 0)
+    password = _string(outbound.get("password"))
+    tag = _string(outbound.get("tag")) or f"{server}:{port}"
+    if not server or port <= 0:
+        return None
+
+    query: dict[str, Any] = {}
+    tls_raw = outbound.get("tls")
+    tls = tls_raw if isinstance(tls_raw, dict) else {}
+    if tls.get("server_name"):
+        query["sni"] = tls.get("server_name")
+    if tls.get("insecure"):
+        query["insecure"] = "1"
+
+    obfs_raw = outbound.get("obfs")
+    obfs = obfs_raw if isinstance(obfs_raw, dict) else {}
+    obfs_type = _string(obfs.get("type"))
+    if obfs_type:
+        query["obfs"] = obfs_type
+    obfs_password = _string(obfs.get("password"))
+    if obfs_password:
+        query["obfs-password"] = obfs_password
+
+    if password:
+        return (
+            f"hy2://{quote(password, safe='')}@{server}:{port}"
+            f"{_build_query(query)}"
+            f"#{quote(tag, safe='')}"
+        )
+    return f"hy2://{server}:{port}{_build_query(query)}#{quote(tag, safe='')}"
+
+
+def singbox_outbound_to_share_link(outbound: dict[str, Any]) -> str | None:
+    outbound_type = _string(outbound.get("type")).lower()
+    if outbound_type == "shadowsocks":
+        return _share_ss(outbound)
+    if outbound_type == "trojan":
+        return _share_trojan(outbound)
+    if outbound_type == "vmess":
+        return _share_vmess(outbound)
+    if outbound_type == "vless":
+        return _share_vless(outbound)
+    if outbound_type == "hysteria2":
+        return _share_hysteria2(outbound)
+    return None
+
+
+def build_shadowrocket_subscription_bundle(outbounds: list[dict[str, Any]]) -> str:
+    links: list[str] = []
+    for outbound in outbounds:
+        if not isinstance(outbound, dict):
+            continue
+        link = singbox_outbound_to_share_link(outbound)
+        if link:
+            links.append(link)
+
+    if not links:
+        return ""
+
+    raw_text = "\n".join(links)
+    encoded = base64.b64encode(raw_text.encode("utf-8")).decode("utf-8")
+    return encoded + "\n"
 
 
 def check_singbox_config(config: dict[str, Any]) -> dict[str, Any]:

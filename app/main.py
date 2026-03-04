@@ -37,6 +37,7 @@ from .services.outbounds import (
 )
 from .services.singbox import (
     build_full_config,
+    build_shadowrocket_subscription_bundle,
     build_subscription_bundle,
     check_singbox_config,
     ensure_base_config_file,
@@ -356,6 +357,7 @@ def api_download_links() -> dict[str, str]:
         "subscriptions": f"/downloads/subscriptions.txt{query}",
         "subscription_outbounds": f"/downloads/subscription-outbounds.json{query}",
         "overlay": f"/downloads/singbox-overlay.json{query}",
+        "shadowrocket_subscription": f"/downloads/shadowrocket-sub.txt{query}",
     }
 
 
@@ -377,6 +379,16 @@ def download_subscription_outbounds(token: str | None = Query(default=None)) -> 
         "Content-Disposition": "attachment; filename=subscription-outbounds.json",
     }
     return JSONResponse(content={"outbounds": outbounds}, headers=headers)
+
+
+@app.get("/downloads/shadowrocket-sub.txt")
+def download_shadowrocket_subscription(token: str | None = Query(default=None)) -> PlainTextResponse:
+    _assert_download_token(token)
+    body = build_shadowrocket_subscription_bundle(list_subscription_cached_outbounds(enabled_only=True))
+    headers = {
+        "Content-Disposition": "attachment; filename=shadowrocket-sub.txt",
+    }
+    return PlainTextResponse(content=body, headers=headers)
 
 
 @app.get("/downloads/singbox-overlay.json")

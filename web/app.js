@@ -49,6 +49,7 @@ const runSingboxCheckBtn = document.querySelector('#runSingboxCheckBtn');
 const previewOverlayResultBtn = document.querySelector('#previewOverlayResultBtn');
 const getOverlayDownloadLinkBtn = document.querySelector('#getOverlayDownloadLinkBtn');
 const getUpdatedOverlayDownloadLinkBtn = document.querySelector('#getUpdatedOverlayDownloadLinkBtn');
+const getShadowrocketDownloadLinkBtn = document.querySelector('#getShadowrocketDownloadLinkBtn');
 
 const AGGREGATE_OUTBOUND_TYPES = new Set(['selector', 'urltest', 'direct']);
 const DEFAULT_OUTBOUND_PAYLOAD = Object.freeze({
@@ -1414,6 +1415,14 @@ async function resolveOverlayDownloadUrl() {
   return new URL(links.overlay || '/downloads/singbox-overlay.json', window.location.origin).toString();
 }
 
+async function resolveShadowrocketDownloadUrl() {
+  const links = await api('/api/download-links');
+  return new URL(
+    links.shadowrocket_subscription || '/downloads/shadowrocket-sub.txt',
+    window.location.origin,
+  ).toString();
+}
+
 async function fetchOverlayResultJson() {
   const overlayUrl = await resolveOverlayDownloadUrl();
   const response = await fetch(overlayUrl, {
@@ -1534,6 +1543,20 @@ if (getOverlayDownloadLinkBtn) {
       await presentOverlayDownloadUrl(overlayUrl);
     } catch (error) {
       showToast(`获取下载链接失败: ${error.message}`, true);
+    }
+  });
+}
+
+if (getShadowrocketDownloadLinkBtn) {
+  getShadowrocketDownloadLinkBtn.addEventListener('click', async () => {
+    try {
+      const shadowrocketUrl = await resolveShadowrocketDownloadUrl();
+      await presentOverlayDownloadUrl(shadowrocketUrl, {
+        copiedMessage: 'Shadowrocket 订阅链接已复制到剪贴板',
+        generatedMessage: 'Shadowrocket 订阅链接已生成',
+      });
+    } catch (error) {
+      showToast(`获取 Shadowrocket 链接失败: ${error.message}`, true);
     }
   });
 }

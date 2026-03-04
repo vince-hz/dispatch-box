@@ -20,6 +20,7 @@
 - 生成下载：
   - `/downloads/subscriptions.txt`（订阅原始地址清单）
   - `/downloads/subscription-outbounds.json`（订阅解析后的 sing-box outbounds）
+  - `/downloads/shadowrocket-sub.txt`（供 Shadowrocket 订阅使用，内容为 Base64 编码的节点链接集合）
   - `/downloads/singbox-overlay.json`（`data/base_config.json` + 动态 outbounds 合并后的完整配置）
 - `sing-box` 静态检测：
   - 一键执行 `sing-box check -c <generated-config>` 检测当前聚合配置是否合法
