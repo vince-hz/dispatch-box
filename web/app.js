@@ -13,6 +13,10 @@ const subGlobalFilterInput = document.querySelector('#subGlobalFilterInput');
 const saveSubFilterBtn = document.querySelector('#saveSubFilterBtn');
 
 const staticLadderTable = document.querySelector('#staticLadderTable');
+const openStaticLadderCreateBtn = document.querySelector('#openStaticLadderCreateBtn');
+const staticLadderEditorModal = document.querySelector('#staticLadderEditorModal');
+const staticLadderEditorTitle = document.querySelector('#staticLadderEditorTitle');
+const closeStaticLadderEditorBtn = document.querySelector('#closeStaticLadderEditorBtn');
 const staticLadderForm = document.querySelector('#staticLadderForm');
 const staticLadderConfigInput = document.querySelector('#staticLadderConfig');
 const staticLadderNoteInput = document.querySelector('#staticLadderNote');
@@ -549,6 +553,24 @@ function closeSubscriptionEditorModal() {
   subEditorModal.hidden = true;
 }
 
+function openStaticLadderEditorModalForCreate() {
+  if (!staticLadderEditorModal) return;
+  resetStaticLadderForm();
+  staticLadderEditorModal.hidden = false;
+}
+
+function openStaticLadderEditorModalForEdit(row) {
+  if (!staticLadderEditorModal || !row) return;
+  fillStaticLadderForm(row);
+  staticLadderEditorModal.hidden = false;
+}
+
+function closeStaticLadderEditorModal() {
+  if (!staticLadderEditorModal) return;
+  staticLadderEditorModal.hidden = true;
+  resetStaticLadderForm();
+}
+
 async function loadSubscriptions() {
   subscriptionsCache = await api('/api/subscriptions');
   renderSubscriptions();
@@ -605,6 +627,9 @@ function resetStaticLadderForm() {
   if (saveStaticLadderBtn) {
     saveStaticLadderBtn.textContent = '添加静态梯子';
   }
+  if (staticLadderEditorTitle) {
+    staticLadderEditorTitle.textContent = '添加静态梯子';
+  }
 }
 
 function fillStaticLadderForm(row) {
@@ -623,6 +648,9 @@ function fillStaticLadderForm(row) {
   }
   if (saveStaticLadderBtn) {
     saveStaticLadderBtn.textContent = '更新静态梯子';
+  }
+  if (staticLadderEditorTitle) {
+    staticLadderEditorTitle.textContent = '更新静态梯子';
   }
 }
 
@@ -739,7 +767,7 @@ if (staticLadderForm) {
         });
         setStatus('静态梯子已添加');
       }
-      resetStaticLadderForm();
+      closeStaticLadderEditorModal();
       await loadStaticLadders();
     } catch (error) {
       setStatus(`静态梯子操作失败: ${error.message}`, true);
@@ -747,10 +775,33 @@ if (staticLadderForm) {
   });
 }
 
+if (openStaticLadderCreateBtn) {
+  openStaticLadderCreateBtn.addEventListener('click', () => {
+    openStaticLadderEditorModalForCreate();
+    setStatus('正在添加静态梯子');
+  });
+}
+
 if (cancelStaticLadderEditBtn) {
   cancelStaticLadderEditBtn.addEventListener('click', () => {
-    resetStaticLadderForm();
+    closeStaticLadderEditorModal();
     setStatus('已取消静态梯子编辑');
+  });
+}
+
+if (closeStaticLadderEditorBtn) {
+  closeStaticLadderEditorBtn.addEventListener('click', () => {
+    closeStaticLadderEditorModal();
+  });
+}
+
+if (staticLadderEditorModal) {
+  staticLadderEditorModal.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.dataset.modalClose === 'staticLadderEditorModal') {
+      closeStaticLadderEditorModal();
+    }
   });
 }
 
@@ -767,7 +818,7 @@ if (staticLadderTable) {
       if (editId) {
         const row = staticLaddersCache.find((item) => String(item.id) === editId);
         if (!row) return;
-        fillStaticLadderForm(row);
+        openStaticLadderEditorModalForEdit(row);
         setStatus(`正在编辑静态梯子: ${row.tag}`);
         return;
       }
@@ -788,7 +839,7 @@ if (staticLadderTable) {
         if (!confirm('确认删除该静态梯子？')) return;
         await api(`/api/static-ladders/${delId}`, { method: 'DELETE' });
         if (editingStaticLadderId === Number(delId)) {
-          resetStaticLadderForm();
+          closeStaticLadderEditorModal();
         }
         await loadStaticLadders();
         setStatus('静态梯子已删除');
@@ -997,6 +1048,10 @@ window.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   if (outboundEditorModal && !outboundEditorModal.hidden) {
     closeOutboundEditorModal();
+    return;
+  }
+  if (staticLadderEditorModal && !staticLadderEditorModal.hidden) {
+    closeStaticLadderEditorModal();
     return;
   }
   if (subEditorModal && !subEditorModal.hidden) {
@@ -1299,7 +1354,7 @@ if (getUpdatedOverlayDownloadLinkBtn) {
 }
 refreshAll()
   .then(() => {
-    resetStaticLadderForm();
+    closeStaticLadderEditorModal();
     setStatus('加载完成');
   })
   .catch((error) => setStatus(`初始化失败: ${error.message}`, true));

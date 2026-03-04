@@ -60,29 +60,12 @@
 
 
         <section class="card">
-          <h2>静态梯子（JSON）</h2>
-          <form id="staticLadderForm" class="outbound-editor-form">
-            <label>
-              JSON 配置
-              <textarea
-                id="staticLadderConfig"
-                placeholder='例如 {"tag":"my-vps","type":"vless",...}'
-                required
-              ></textarea>
-            </label>
-            <label>
-              备注
-              <input id="staticLadderNote" placeholder="备注" />
-            </label>
-            <label class="check">
-              <input id="staticLadderEnabled" type="checkbox" checked />
-              启用
-            </label>
-            <div class="actions">
-              <button id="saveStaticLadderBtn" type="submit">添加静态梯子</button>
-              <button id="cancelStaticLadderEditBtn" type="button" class="ghost">取消编辑</button>
+          <div class="section-head">
+            <h2>静态梯子（JSON）</h2>
+            <div class="section-head-actions">
+              <button id="openStaticLadderCreateBtn" type="button" class="ghost">添加静态梯子</button>
             </div>
-          </form>
+          </div>
           <table>
             <thead>
               <tr>
@@ -169,6 +152,45 @@
               </thead>
               <tbody id="subEditorTable"></tbody>
             </table>
+          </div>
+        </section>
+      </div>
+
+      <div id="staticLadderEditorModal" class="modal" hidden>
+        <div class="modal-backdrop" data-modal-close="staticLadderEditorModal"></div>
+        <section
+          class="modal-card outbound-modal-card"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="staticLadderEditorTitle"
+        >
+          <div class="modal-header">
+            <h3 id="staticLadderEditorTitle">添加静态梯子</h3>
+            <button id="closeStaticLadderEditorBtn" type="button" class="ghost">关闭</button>
+          </div>
+          <div class="modal-body">
+            <form id="staticLadderForm" class="outbound-editor-form">
+              <label>
+                JSON 配置
+                <textarea
+                  id="staticLadderConfig"
+                  placeholder='例如 {"tag":"my-vps","type":"vless",...}'
+                  required
+                ></textarea>
+              </label>
+              <label>
+                备注
+                <input id="staticLadderNote" placeholder="备注" />
+              </label>
+              <label class="check">
+                <input id="staticLadderEnabled" type="checkbox" checked />
+                启用
+              </label>
+              <div class="actions">
+                <button id="saveStaticLadderBtn" type="submit">添加静态梯子</button>
+                <button id="cancelStaticLadderEditBtn" type="button" class="ghost">取消</button>
+              </div>
+            </form>
           </div>
         </section>
       </div>
