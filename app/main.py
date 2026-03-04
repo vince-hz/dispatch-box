@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .config import DOWNLOAD_TOKEN
@@ -93,6 +94,12 @@ app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
 def _assert_download_token(token: str | None) -> None:
     if DOWNLOAD_TOKEN and token != DOWNLOAD_TOKEN:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def _json_attachment_response(payload: object, filename: str) -> Response:
+    headers = {"Content-Disposition": f"attachment; filename={filename}"}
+    body = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    return Response(content=body, headers=headers, media_type="application/json")
 
 
 @app.get("/health")
@@ -376,13 +383,10 @@ def download_subscriptions(token: str | None = Query(default=None)) -> PlainText
 
 
 @app.get("/downloads/subscription-outbounds.json")
-def download_subscription_outbounds(token: str | None = Query(default=None)) -> JSONResponse:
+def download_subscription_outbounds(token: str | None = Query(default=None)) -> Response:
     _assert_download_token(token)
     outbounds = list_subscription_cached_outbounds(enabled_only=True)
-    headers = {
-        "Content-Disposition": "attachment; filename=subscription-outbounds.json",
-    }
-    return JSONResponse(content={"outbounds": outbounds}, headers=headers)
+    return _json_attachment_response({"outbounds": outbounds}, "subscription-outbounds.json")
 
 
 @app.get("/downloads/shadowrocket-sub.txt")
@@ -407,14 +411,11 @@ def download_clash_subscription(token: str | None = Query(default=None)) -> Plai
 
 
 @app.get("/downloads/singbox-overlay.json")
-def download_overlay(token: str | None = Query(default=None)) -> JSONResponse:
+def download_overlay(token: str | None = Query(default=None)) -> Response:
     _assert_download_token(token)
     overlay = build_full_config(
         outbounds=list_outbounds(),
         subscription_outbounds=list_subscription_cached_outbounds(enabled_only=True),
         static_outbounds=list_static_ladder_outbounds(enabled_only=True),
     )
-    headers = {
-        "Content-Disposition": "attachment; filename=singbox-overlay.json",
-    }
-    return JSONResponse(content=overlay, headers=headers)
+    return _json_attachment_response(overlay, "singbox-overlay.json")
