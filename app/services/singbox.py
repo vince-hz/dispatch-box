@@ -30,12 +30,6 @@ DEFAULT_CLASH_TEMPLATE: dict[str, Any] = {
     "proxies": [],
     "proxy-groups": [
         {
-            "name": "Proxy",
-            "type": "select",
-            "proxies": ["DIRECT"],
-            "includeAllProxies": True,
-        },
-        {
             "name": "Auto",
             "type": "url-test",
             "url": "https://www.gstatic.com/generate_204",
@@ -43,8 +37,14 @@ DEFAULT_CLASH_TEMPLATE: dict[str, Any] = {
             "tolerance": 50,
             "includeAllProxies": True,
         },
+        {
+            "name": "Proxy",
+            "type": "select",
+            "proxies": ["Auto", "DIRECT"],
+            "includeAllProxies": True,
+        },
     ],
-    "rules": ["MATCH,Proxy"],
+    "rules": ["DOMAIN-SUFFIX,cn,DIRECT", "GEOIP,CN,DIRECT", "MATCH,Auto"],
 }
 
 
@@ -976,7 +976,7 @@ def build_clash_subscription_config(outbounds: list[dict[str, Any]]) -> dict[str
 
     rules = _normalize_clash_rules(result.get("rules"))
     if not rules:
-        rules = ["MATCH,Proxy"]
+        rules = ["DOMAIN-SUFFIX,cn,DIRECT", "GEOIP,CN,DIRECT", "MATCH,Auto"]
     result["rules"] = rules
 
     return result
