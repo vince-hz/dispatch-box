@@ -63,6 +63,10 @@ def _default_provider_state() -> StateT:
         "version": 1,
         "next_id": 1,
         "items": [],
+        "static_ladders": {
+            "next_id": 1,
+            "items": [],
+        },
         "replace_map": dict(DEFAULT_SUBSCRIPTION_REPLACE_MAP),
         "filter": _normalize_provider_filter(None),
     }
@@ -173,11 +177,30 @@ def _ensure_provider_state_shape(state: Any) -> StateT:
 
     replace_map = _normalize_provider_replace_map(state.get("replace_map"))
     filter_config = _normalize_provider_filter(state.get("filter"))
+    static_ladders_raw = state.get("static_ladders")
+    if isinstance(static_ladders_raw, dict):
+        static_ladder_items = static_ladders_raw.get("items")
+        static_ladder_next_id = static_ladders_raw.get("next_id")
+    else:
+        static_ladder_items = []
+        static_ladder_next_id = 1
+    if not isinstance(static_ladder_items, list):
+        static_ladder_items = []
+    if not isinstance(static_ladder_next_id, int) or static_ladder_next_id < 1:
+        max_ladder_id = max(
+            [int(item.get("id") or 0) for item in static_ladder_items if isinstance(item, dict)],
+            default=0,
+        )
+        static_ladder_next_id = max_ladder_id + 1 if max_ladder_id > 0 else 1
 
     return {
         "version": version,
         "next_id": next_id,
         "items": items,
+        "static_ladders": {
+            "next_id": static_ladder_next_id,
+            "items": static_ladder_items,
+        },
         "replace_map": replace_map,
         "filter": filter_config,
     }

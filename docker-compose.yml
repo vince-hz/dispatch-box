@@ -1,0 +1,16 @@
+services:
+  dispatch-box:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dispatch-box
+    restart: unless-stopped
+    ports:
+      - "${DISPATCH_BOX_PORT:-18080}:18080"
+    environment:
+      DISPATCH_BOX_DOWNLOAD_TOKEN: "${DISPATCH_BOX_DOWNLOAD_TOKEN:-}"
+      SINGBOX_BIN: "${SINGBOX_BIN:-sing-box}"
+    volumes:
+      - ./data:/app/data
+      # If sing-box exists on host, mount it into container and set SINGBOX_BIN accordingly.
+      # - /usr/local/bin/sing-box:/usr/local/bin/sing-box:ro

@@ -34,6 +34,7 @@ from .services.outbounds import (
     create_outbound,
     delete_outbound,
     list_outbounds,
+    purge_non_aggregate_outbounds,
     update_outbound,
 )
 from .services.singbox import (
@@ -50,6 +51,7 @@ from .services.static_ladders import (
     delete_static_ladder,
     list_static_ladder_outbounds,
     list_static_ladders,
+    migrate_legacy_static_ladders_to_provider,
     update_static_ladder,
 )
 from .services.subscription_sync import (
@@ -86,6 +88,8 @@ app.add_middleware(
 def startup() -> None:
     ensure_base_config_file()
     ensure_clash_template_file()
+    migrate_legacy_static_ladders_to_provider()
+    purge_non_aggregate_outbounds()
 
 
 app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")

@@ -38,7 +38,7 @@
 
 如果某些节点行无法识别，会记录在拉取结果的 `warnings` 中。
 
-## 快速启动
+## 本地开发启动
 
 ```bash
 make run
@@ -49,6 +49,22 @@ make run
 说明：
 - `make run` 会自动检查 `python3`、创建 `.venv`，并在首次启动或 `requirements.txt` 更新后自动安装依赖。
 - 如需只准备环境不启动服务，可运行 `make setup`。
+
+## Docker 部署
+
+```bash
+mkdir -p data
+make production
+```
+
+打开：`http://127.0.0.1:18080`（或你的服务器 IP）
+
+说明：
+- `make production` 会执行 `docker compose up -d --build`。
+- 数据目录通过 `./data:/app/data` 挂载，容器重建后数据仍保留。
+- 停止服务：`make production-down`
+- 查看日志：`make production-logs`
+- 如需修改端口，可在运行前设置 `DISPATCH_BOX_PORT`，例如：`DISPATCH_BOX_PORT=28080 make production`
 
 ## 环境变量
 
@@ -82,10 +98,11 @@ make run
 ## 注意
 
 - 面板只负责订阅、静态梯子、聚合 outbounds。
+- `data/dispatch_state.json` 的 `outbounds.items` 仅保留聚合类型（`selector` / `urltest` / `direct`）；启动时会自动清理历史误存的节点型 outbound。
+- `data/provider.json` 存储订阅及其缓存节点，同时也存储 `static_ladders`。
 - 分流规则、`rule_set`、DNS、实验配置等请直接写在 `data/base_config.json`。
 - `/downloads/singbox-overlay.json` 会读取 `data/base_config.json`，并将最终 `outbounds` 覆盖写入。
 - `/downloads/clash.yaml` 会读取 `data/clash_template.json`，并将 `proxies` 覆盖写入。
 - 覆盖顺序为：订阅节点 -> 静态梯子 -> 已启用聚合 outbounds（同 tag 后者覆盖前者）。
-- 机场订阅数据独立存储于 `data/provider.json`。
 - 若 `data/base_config.json` 不存在，启动时会自动创建默认文件。
 - 若 `data/clash_template.json` 不存在，启动时会自动创建默认文件。

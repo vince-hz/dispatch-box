@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..schemas import StaticLadderCreate, StaticLadderUpdate
-from .state_store import read_state, update_state, utc_now
+from .state_store import read_provider_state, read_state, update_provider_state, update_state, utc_now
 
 
 def _section(state: dict[str, Any]) -> dict[str, Any]:
@@ -63,7 +63,7 @@ def _find_by_tag(items: list[dict[str, Any]], tag: str) -> tuple[int, dict[str, 
 
 
 def list_static_ladders(*, enabled_only: bool = False) -> list[dict[str, Any]]:
-    state = read_state()
+    state = read_provider_state()
     items = _section(state).get("items") or []
 
     rows = [_normalize_row(item) for item in items if isinstance(item, dict)]
@@ -103,7 +103,7 @@ def create_static_ladder(payload: StaticLadderCreate) -> dict[str, Any]:
         section["next_id"] = next_id + 1
         return _normalize_row(item)
 
-    return update_state(mutator)
+    return update_provider_state(mutator)
 
 
 def update_static_ladder(ladder_id: int, payload: StaticLadderUpdate) -> dict[str, Any] | None:
@@ -144,7 +144,7 @@ def update_static_ladder(ladder_id: int, payload: StaticLadderUpdate) -> dict[st
         items[index] = updated
         return _normalize_row(updated)
 
-    return update_state(mutator)
+    return update_provider_state(mutator)
 
 
 def delete_static_ladder(ladder_id: int) -> bool:
@@ -159,7 +159,7 @@ def delete_static_ladder(ladder_id: int) -> bool:
         items.pop(index)
         return True
 
-    return update_state(mutator)
+    return update_provider_state(mutator)
 
 
 def list_static_ladder_outbounds(*, enabled_only: bool = True) -> list[dict[str, Any]]:
@@ -177,3 +177,98 @@ def list_static_ladder_outbounds(*, enabled_only: bool = True) -> list[dict[str,
         outbounds.append(dict(config))
 
     return outbounds
+
+
+def migrate_legacy_static_ladders_to_provider() -> int:
+    legacy_state = read_state()
+    legacy_section = legacy_state.get("static_ladders")
+    if not isinstance(legacy_section, dict):
+        return 0
+
+    raw_items = legacy_section.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        return 0
+
+    candidates: list[dict[str, Any]] = []
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
+            continue
+        row = _normalize_row(raw_item)
+        config = row.get("config")
+        if not isinstance(config, dict):
+            continue
+
+        tag = str(config.get("tag") or row.get("tag") or "").strip()
+        outbound_type = str(config.get("type") or row.get("type") or "").strip()
+        if not tag or not outbound_type:
+            continue
+
+        normalized_config = dict(config)
+        normalized_config["tag"] = tag
+        normalized_config["type"] = outbound_type
+        candidates.append(
+            {
+                "tag": tag,
+                "type": outbound_type,
+                "config": normalized_config,
+                "enabled": bool(row.get("enabled", True)),
+                "note": str(row.get("note") or ""),
+                "created_at": str(row.get("created_at") or ""),
+                "updated_at": str(row.get("updated_at") or ""),
+            }
+        )
+
+    def provider_mutator(state: dict[str, Any]) -> int:
+        section = _section(state)
+        items = section.get("items")
+        if not isinstance(items, list):
+            items = []
+            section["items"] = items
+
+        existing_tags: set[str] = set()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            tag = str(item.get("tag") or "").strip()
+            if tag:
+                existing_tags.add(tag)
+
+        next_id = int(section.get("next_id") or 1)
+        moved = 0
+        now = utc_now()
+
+        for candidate in candidates:
+            tag = str(candidate["tag"])
+            if tag in existing_tags:
+                continue
+
+            item = {
+                "id": next_id,
+                "tag": tag,
+                "type": str(candidate["type"]),
+                "config": dict(candidate["config"]),
+                "enabled": bool(candidate["enabled"]),
+                "note": str(candidate["note"]),
+                "created_at": str(candidate["created_at"] or now),
+                "updated_at": str(candidate["updated_at"] or now),
+            }
+            items.append(item)
+            existing_tags.add(tag)
+            next_id += 1
+            moved += 1
+
+        section["next_id"] = next_id
+        return moved
+
+    moved_count = update_provider_state(provider_mutator)
+
+    def clear_legacy_mutator(state: dict[str, Any]) -> None:
+        section = state.get("static_ladders")
+        if not isinstance(section, dict):
+            state["static_ladders"] = {"next_id": 1, "items": []}
+            return
+        section["items"] = []
+        section["next_id"] = 1
+
+    update_state(clear_legacy_mutator)
+    return moved_count
