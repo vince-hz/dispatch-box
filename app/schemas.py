@@ -137,3 +137,13 @@ class ConfigPreview(BaseModel):
     outbounds: list[OutboundOut]
     static_ladders: list[StaticLadderOut] = Field(default_factory=list)
     overlay: dict[str, Any]
+
+
+class SingboxCheckResult(BaseModel):
+    ok: bool
+    message: str
+    command: str
+    exit_code: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+    checked_at: datetime

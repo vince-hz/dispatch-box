@@ -39,6 +39,8 @@ const outboundIncludeAllNodesInput = document.querySelector('#outboundIncludeAll
 const saveOutboundBtn = document.querySelector('#saveOutboundBtn');
 const cancelOutboundEditBtn = document.querySelector('#cancelOutboundEditBtn');
 
+const runSingboxCheckBtn = document.querySelector('#runSingboxCheckBtn');
+const previewOverlayResultBtn = document.querySelector('#previewOverlayResultBtn');
 const getOverlayDownloadLinkBtn = document.querySelector('#getOverlayDownloadLinkBtn');
 const getUpdatedOverlayDownloadLinkBtn = document.querySelector('#getUpdatedOverlayDownloadLinkBtn');
 
@@ -116,6 +118,59 @@ function escapeHtml(text = '') {
 
 function short(text = '', max = 60) {
   return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function openJsonPreviewWindow(title, data) {
+  const previewWindow = window.open('', '_blank');
+  if (!previewWindow) {
+    return false;
+  }
+
+  const safeTitle = escapeHtml(title || 'JSON 预览');
+  const jsonText = escapeHtml(JSON.stringify(data || {}, null, 2));
+
+  previewWindow.document.open();
+  previewWindow.document.write(`<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${safeTitle}</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: "SF Pro Text", "PingFang SC", "Hiragino Sans GB", sans-serif;
+        background: #f3f6f9;
+        color: #1c2833;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+      pre {
+        margin: 0;
+        border: 1px solid #dbe3eb;
+        border-radius: 10px;
+        background: #ffffff;
+        padding: 14px;
+        overflow: auto;
+        line-height: 1.5;
+        font-size: 13px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>${safeTitle}</h1>
+    <pre>${jsonText}</pre>
+  </body>
+</html>`);
+  previewWindow.document.close();
+  return true;
 }
 
 function payloadText(payload) {
@@ -1267,6 +1322,24 @@ async function resolveOverlayDownloadUrl() {
   return new URL(links.overlay || '/downloads/singbox-overlay.json', window.location.origin).toString();
 }
 
+async function fetchOverlayResultJson() {
+  const overlayUrl = await resolveOverlayDownloadUrl();
+  const response = await fetch(overlayUrl, {
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const rawText = await response.text();
+  try {
+    return JSON.parse(rawText);
+  } catch (error) {
+    throw new Error(`下载结果不是有效 JSON: ${error.message}`);
+  }
+}
+
 async function presentOverlayDownloadUrl(
   overlayUrl,
   {
@@ -1281,6 +1354,72 @@ async function presentOverlayDownloadUrl(
   }
   window.prompt('下载链接（可复制）', overlayUrl);
   showToast(generatedMessage);
+}
+
+function buildSingboxCheckMessage(result) {
+  if (!result || typeof result !== 'object') {
+    return 'sing-box 静态检测失败';
+  }
+  const base = `${result.message || (result.ok ? 'sing-box 静态检测通过' : 'sing-box 静态检测失败')}`.trim();
+  const detail = `${result.stderr || result.stdout || ''}`.trim();
+  if (!detail || detail === base) {
+    return base;
+  }
+  return `${base} | ${short(detail, 140)}`;
+}
+
+if (runSingboxCheckBtn) {
+  runSingboxCheckBtn.addEventListener('click', async () => {
+    if (runSingboxCheckBtn instanceof HTMLButtonElement) {
+      runSingboxCheckBtn.disabled = true;
+      runSingboxCheckBtn.textContent = '检测中...';
+    }
+
+    setStatus('正在执行 sing-box 静态检测...');
+    try {
+      const result = await api('/api/singbox/check', { method: 'POST' });
+      const message = buildSingboxCheckMessage(result);
+      setStatus(message, !result.ok);
+      showToast(message, !result.ok, result.ok ? 3000 : 5000);
+    } catch (error) {
+      const message = `sing-box 静态检测请求失败: ${error.message}`;
+      setStatus(message, true);
+      showToast(message, true, 5000);
+    } finally {
+      if (runSingboxCheckBtn instanceof HTMLButtonElement) {
+        runSingboxCheckBtn.disabled = false;
+        runSingboxCheckBtn.textContent = 'sing-box 静态检测';
+      }
+    }
+  });
+}
+
+if (previewOverlayResultBtn) {
+  previewOverlayResultBtn.addEventListener('click', async () => {
+    if (previewOverlayResultBtn instanceof HTMLButtonElement) {
+      previewOverlayResultBtn.disabled = true;
+      previewOverlayResultBtn.textContent = '预览中...';
+    }
+
+    setStatus('正在加载下载结果预览...');
+    try {
+      const data = await fetchOverlayResultJson();
+      const opened = openJsonPreviewWindow('下载结果 JSON 预览', data);
+      if (!opened) {
+        setStatus('无法打开预览窗口，请检查浏览器弹窗设置', true);
+        return;
+      }
+      setStatus('已打开下载结果 JSON 预览');
+    } catch (error) {
+      setStatus(`预览下载结果失败: ${error.message}`, true);
+      showToast(`预览下载结果失败: ${error.message}`, true);
+    } finally {
+      if (previewOverlayResultBtn instanceof HTMLButtonElement) {
+        previewOverlayResultBtn.disabled = false;
+        previewOverlayResultBtn.textContent = '预览下载结果';
+      }
+    }
+  });
 }
 
 if (getOverlayDownloadLinkBtn) {

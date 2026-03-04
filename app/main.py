@@ -15,6 +15,7 @@ from .schemas import (
     OutboundCreate,
     OutboundOut,
     OutboundUpdate,
+    SingboxCheckResult,
     StaticLadderCreate,
     StaticLadderOut,
     StaticLadderUpdate,
@@ -37,6 +38,7 @@ from .services.outbounds import (
 from .services.singbox import (
     build_full_config,
     build_subscription_bundle,
+    check_singbox_config,
     ensure_base_config_file,
 )
 from .services.static_ladders import (
@@ -335,6 +337,16 @@ def api_config_preview() -> ConfigPreview:
         "static_ladders": static_ladders,
         "overlay": overlay,
     }
+
+
+@app.post("/api/singbox/check", response_model=SingboxCheckResult)
+def api_singbox_check() -> SingboxCheckResult:
+    config = build_full_config(
+        outbounds=list_outbounds(),
+        subscription_outbounds=list_subscription_cached_outbounds(enabled_only=True),
+        static_outbounds=list_static_ladder_outbounds(enabled_only=True),
+    )
+    return check_singbox_config(config)
 
 
 @app.get("/api/download-links")

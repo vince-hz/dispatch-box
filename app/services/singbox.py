@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
+import tempfile
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -205,3 +210,80 @@ def build_subscription_bundle(subscriptions: list[dict[str, Any]]) -> str:
     enabled = [sub for sub in subscriptions if sub["enabled"]]
     lines = [f"# {item['name']}\n{item['url']}" for item in enabled]
     return "\n\n".join(lines).strip() + ("\n" if lines else "")
+
+
+def check_singbox_config(config: dict[str, Any]) -> dict[str, Any]:
+    checked_at = datetime.now(timezone.utc)
+
+    configured_bin = str(os.getenv("SINGBOX_BIN", "sing-box")).strip() or "sing-box"
+    resolved_bin = shutil.which(configured_bin)
+    command = f"{configured_bin} check -c <temp-config>"
+
+    if not resolved_bin:
+        return {
+            "ok": False,
+            "message": f"未找到 sing-box 可执行文件：{configured_bin}",
+            "command": command,
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "",
+            "checked_at": checked_at,
+        }
+
+    command = f"{resolved_bin} check -c <temp-config>"
+    temp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as temp_file:
+            json.dump(config, temp_file, ensure_ascii=False, indent=2)
+            temp_file.write("\n")
+            temp_path = temp_file.name
+
+        command = f"{resolved_bin} check -c {temp_path}"
+        completed = subprocess.run(
+            [resolved_bin, "check", "-c", temp_path],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False,
+            "message": "sing-box 静态检测超时（30s）",
+            "command": command,
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "",
+            "checked_at": checked_at,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "message": f"执行 sing-box 检测失败：{exc}",
+            "command": command,
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "",
+            "checked_at": checked_at,
+        }
+    finally:
+        if temp_path:
+            try:
+                Path(temp_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    stdout = (completed.stdout or "").strip()
+    stderr = (completed.stderr or "").strip()
+    ok = completed.returncode == 0
+    message = "sing-box 静态检测通过" if ok else (stderr or stdout or f"sing-box 检测失败（exit code: {completed.returncode}）")
+
+    return {
+        "ok": ok,
+        "message": message,
+        "command": command,
+        "exit_code": completed.returncode,
+        "stdout": stdout,
+        "stderr": stderr,
+        "checked_at": checked_at,
+    }

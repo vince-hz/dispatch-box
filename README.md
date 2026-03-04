@@ -21,6 +21,8 @@
   - `/downloads/subscriptions.txt`（订阅原始地址清单）
   - `/downloads/subscription-outbounds.json`（订阅解析后的 sing-box outbounds）
   - `/downloads/singbox-overlay.json`（`data/base_config.json` + 动态 outbounds 合并后的完整配置）
+- `sing-box` 静态检测：
+  - 一键执行 `sing-box check -c <generated-config>` 检测当前聚合配置是否合法
 
 ## 订阅解析支持
 
@@ -49,6 +51,7 @@ make run
 ## 环境变量
 
 - `DISPATCH_BOX_DOWNLOAD_TOKEN`：设置后，下载接口需带 `?token=...`
+- `SINGBOX_BIN`：可选，自定义 `sing-box` 可执行文件路径（默认：`sing-box`）
 
 ## API 摘要
 
@@ -71,6 +74,7 @@ make run
 - `PUT /api/static-ladders/{id}`
 - `DELETE /api/static-ladders/{id}`
 - `GET /api/config/preview`
+- `POST /api/singbox/check`
 - `GET /api/download-links`
 
 ## 注意
