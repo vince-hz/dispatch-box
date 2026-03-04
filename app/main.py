@@ -34,6 +34,7 @@ from .services.outbounds import (
     create_outbound,
     delete_outbound,
     list_outbounds,
+    migrate_include_all_nodes_markers,
     purge_non_aggregate_outbounds,
     update_outbound,
 )
@@ -90,6 +91,7 @@ def startup() -> None:
     ensure_clash_template_file()
     migrate_legacy_static_ladders_to_provider()
     purge_non_aggregate_outbounds()
+    migrate_include_all_nodes_markers()
 
 
 app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")

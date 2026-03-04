@@ -70,6 +70,10 @@ let editingOutboundId = null;
 let editingStaticLadderId = null;
 let toastHideTimer = null;
 
+function byIdAsc(a, b) {
+  return Number(a?.id || 0) - Number(b?.id || 0);
+}
+
 function setStatus(msg, isError = false) {
   if (!statusText) return;
   statusText.textContent = msg;
@@ -546,7 +550,14 @@ function renderGlobalFilterEditor() {
 }
 
 function subscriptionRenameText(row) {
-  return row.rename_prefix ? `前缀: ${row.rename_prefix}` : '-';
+  const parts = [];
+  if (row.rename_prefix) {
+    parts.push(`前缀: ${row.rename_prefix}`);
+  }
+  if (row.remove_flag) {
+    parts.push('去掉国旗');
+  }
+  return parts.length ? parts.join(' | ') : '-';
 }
 
 function subscriptionSyncText(row) {
@@ -578,6 +589,7 @@ function renderSubscriptionEditorTable() {
         <td><input type="url" data-sub-create-url placeholder="订阅 URL" /></td>
         <td><input type="text" data-sub-create-ua placeholder="User-Agent（可留空）" /></td>
         <td><input type="text" data-sub-create-rename placeholder="重命名前缀" /></td>
+        <td><label class="check"><input type="checkbox" data-sub-create-remove-flag /> 去掉国旗</label></td>
         <td><label class="check"><input type="checkbox" data-sub-create-enabled checked /> 启用</label></td>
         <td><input type="text" data-sub-create-note placeholder="备注" /></td>
         <td class="actions">
@@ -587,7 +599,7 @@ function renderSubscriptionEditorTable() {
   `;
 
   if (!subscriptionsCache.length) {
-    subEditorTable.innerHTML = createRow + '<tr><td colspan="8">暂无订阅，可先添加</td></tr>';
+    subEditorTable.innerHTML = createRow + '<tr><td colspan="9">暂无订阅，可先添加</td></tr>';
     return;
   }
 
@@ -600,6 +612,7 @@ function renderSubscriptionEditorTable() {
         <td><input type="url" data-sub-edit-url="${row.id}" value="${escapeHtml(row.url || '')}" /></td>
         <td><input type="text" data-sub-edit-ua="${row.id}" value="${escapeHtml(row.user_agent || '')}" /></td>
         <td><input type="text" data-sub-edit-rename="${row.id}" value="${escapeHtml(row.rename_prefix || '')}" /></td>
+        <td><label class="check"><input type="checkbox" data-sub-edit-remove-flag="${row.id}" ${row.remove_flag ? 'checked' : ''} /> 去掉国旗</label></td>
         <td><label class="check"><input type="checkbox" data-sub-edit-enabled="${row.id}" ${row.enabled ? 'checked' : ''} /> 启用</label></td>
         <td><input type="text" data-sub-edit-note="${row.id}" value="${escapeHtml(row.note || '')}" /></td>
         <td class="actions">
@@ -676,7 +689,8 @@ function closeStaticLadderEditorModal() {
 }
 
 async function loadSubscriptions() {
-  subscriptionsCache = await api('/api/subscriptions');
+  const rows = await api('/api/subscriptions');
+  subscriptionsCache = Array.isArray(rows) ? [...rows].sort(byIdAsc) : [];
   renderSubscriptions();
 }
 
@@ -792,7 +806,8 @@ async function loadStaticLadders() {
 
 async function loadOutbounds() {
   const rows = await api('/api/outbounds');
-  const aggregateRows = rows.filter((row) => isAggregateOutbound(row));
+  const sortedRows = Array.isArray(rows) ? [...rows].sort(byIdAsc) : [];
+  const aggregateRows = sortedRows.filter((row) => isAggregateOutbound(row));
   outboundsCache = aggregateRows;
 
   if (!outboundTable) return;
@@ -1271,6 +1286,7 @@ if (subEditorTable) {
       const urlInput = document.querySelector('[data-sub-create-url]');
       const uaInput = document.querySelector('[data-sub-create-ua]');
       const renameInput = document.querySelector('[data-sub-create-rename]');
+      const removeFlagInput = document.querySelector('[data-sub-create-remove-flag]');
       const enabledInput = document.querySelector('[data-sub-create-enabled]');
       const noteInput = document.querySelector('[data-sub-create-note]');
 
@@ -1278,6 +1294,7 @@ if (subEditorTable) {
       if (!(urlInput instanceof HTMLInputElement)) return;
       if (!(uaInput instanceof HTMLInputElement)) return;
       if (!(renameInput instanceof HTMLInputElement)) return;
+      if (!(removeFlagInput instanceof HTMLInputElement)) return;
       if (!(enabledInput instanceof HTMLInputElement)) return;
       if (!(noteInput instanceof HTMLInputElement)) return;
 
@@ -1286,6 +1303,7 @@ if (subEditorTable) {
         url: urlInput.value.trim(),
         user_agent: uaInput.value.trim(),
         rename_prefix: renameInput.value.trim(),
+        remove_flag: removeFlagInput.checked,
         enabled: enabledInput.checked,
         note: noteInput.value,
       };
@@ -1316,6 +1334,7 @@ if (subEditorTable) {
     const urlInput = document.querySelector(`[data-sub-edit-url="${id}"]`);
     const uaInput = document.querySelector(`[data-sub-edit-ua="${id}"]`);
     const renameInput = document.querySelector(`[data-sub-edit-rename="${id}"]`);
+    const removeFlagInput = document.querySelector(`[data-sub-edit-remove-flag="${id}"]`);
     const enabledInput = document.querySelector(`[data-sub-edit-enabled="${id}"]`);
     const noteInput = document.querySelector(`[data-sub-edit-note="${id}"]`);
 
@@ -1323,6 +1342,7 @@ if (subEditorTable) {
     if (!(urlInput instanceof HTMLInputElement)) return;
     if (!(uaInput instanceof HTMLInputElement)) return;
     if (!(renameInput instanceof HTMLInputElement)) return;
+    if (!(removeFlagInput instanceof HTMLInputElement)) return;
     if (!(enabledInput instanceof HTMLInputElement)) return;
     if (!(noteInput instanceof HTMLInputElement)) return;
 
@@ -1331,6 +1351,7 @@ if (subEditorTable) {
       url: urlInput.value.trim(),
       user_agent: uaInput.value.trim(),
       rename_prefix: renameInput.value.trim(),
+      remove_flag: removeFlagInput.checked,
       enabled: enabledInput.checked,
       note: noteInput.value,
     };

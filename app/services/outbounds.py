@@ -27,6 +27,33 @@ def _validate_aggregate_outbound_type(raw: Any) -> str:
     return outbound_type
 
 
+def _parse_bool(raw: Any, default: bool = False) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    if raw is None:
+        return default
+    if isinstance(raw, (int, float)):
+        return raw != 0
+    value = str(raw).strip().lower()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on"}
+
+
+def _normalize_tag_list(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        tag = str(item or "").strip()
+        if not tag or tag in seen:
+            continue
+        seen.add(tag)
+        result.append(tag)
+    return result
+
+
 def _outbounds_section(state: dict[str, Any]) -> dict[str, Any]:
     return state["outbounds"]
 
@@ -70,7 +97,7 @@ def list_outbounds() -> list[dict[str, Any]]:
     state = read_state()
     items = _outbounds_section(state)["items"]
     rows = [_normalize_outbound(item) for item in items if isinstance(item, dict) and _is_aggregate_outbound_item(item)]
-    rows.sort(key=lambda item: item["updated_at"], reverse=True)
+    rows.sort(key=lambda item: int(item.get("id") or 0))
     return rows
 
 
@@ -220,6 +247,63 @@ def purge_non_aggregate_outbounds() -> int:
             next_id = int(section.get("next_id") or 1)
             section["next_id"] = max(next_id, max_id + 1, 1)
         return removed
+
+    return update_state(mutator)
+
+
+def migrate_include_all_nodes_markers() -> int:
+    def mutator(state: dict[str, Any]) -> int:
+        section = _outbounds_section(state)
+        items = section.get("items")
+        if not isinstance(items, list):
+            return 0
+
+        aggregate_tag_set = {
+            str(item.get("tag") or "").strip()
+            for item in items
+            if isinstance(item, dict) and _is_aggregate_outbound_item(item) and str(item.get("tag") or "").strip()
+        }
+
+        changed_rows = 0
+        now = utc_now()
+
+        for item in items:
+            if not isinstance(item, dict) or not _is_aggregate_outbound_item(item):
+                continue
+
+            outbound_type = _normalize_outbound_type(item.get("type"))
+            if outbound_type not in {"selector", "urltest"}:
+                continue
+
+            payload_raw = item.get("payload")
+            payload = dict(payload_raw) if isinstance(payload_raw, dict) else {}
+            outbound_tags = _normalize_tag_list(payload.get("outbounds"))
+            if not outbound_tags:
+                continue
+
+            include_all_nodes = _parse_bool(
+                payload.get("includeAllNodes"),
+                _parse_bool(payload.get("include_all_nodes"), False),
+            )
+            has_node_refs = any(tag not in aggregate_tag_set for tag in outbound_tags)
+            if not has_node_refs:
+                continue
+
+            keep_refs = [tag for tag in outbound_tags if tag in aggregate_tag_set and tag != str(item.get("tag") or "")]
+
+            payload["outbounds"] = keep_refs
+            payload["includeAllNodes"] = True
+            payload.pop("include_all_nodes", None)
+            if include_all_nodes and payload.get("default") and payload["default"] not in keep_refs:
+                payload["default"] = keep_refs[0] if keep_refs else ""
+            if not include_all_nodes and payload.get("default") and keep_refs and payload["default"] not in keep_refs:
+                payload["default"] = keep_refs[0]
+
+            item["payload"] = payload
+            item["updated_at"] = now
+            changed_rows += 1
+
+        return changed_rows
 
     return update_state(mutator)
 

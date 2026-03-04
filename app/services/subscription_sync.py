@@ -146,8 +146,20 @@ def _clean_node_name(name: str, replace_map: dict[str, str] | None = None) -> st
     return cleaned.strip()
 
 
-def _apply_rename(name: str, rename_prefix: str, replace_map: dict[str, str] | None = None) -> str:
-    base = _clean_node_name(name, replace_map=replace_map) or name.strip() or "node"
+def _strip_flag_emoji(name: str) -> str:
+    # Remove country/region flag emoji built from regional indicator symbols.
+    cleaned = re.sub(r"[\U0001F1E6-\U0001F1FF]", "", str(name or ""))
+    return cleaned.strip()
+
+
+def _apply_rename(
+    name: str,
+    rename_prefix: str,
+    replace_map: dict[str, str] | None = None,
+    remove_flag: bool = False,
+) -> str:
+    source_name = _strip_flag_emoji(name) if remove_flag else name
+    base = _clean_node_name(source_name, replace_map=replace_map) or source_name.strip() or "node"
     if not rename_prefix:
         return base
     prefix = rename_prefix.strip()
@@ -503,6 +515,7 @@ def fetch_and_build_subscription_outbounds(
 
     user_agent = str(subscription.get("user_agent") or "").strip()
     rename_prefix = str(subscription.get("rename_prefix") or "").strip()
+    remove_flag = bool(subscription.get("remove_flag", False))
 
     effective_replace_map = replace_map if isinstance(replace_map, dict) else _REPLACE_MAP_DEFAULT
     normalized_filter = filter_config if isinstance(filter_config, dict) else {}
@@ -543,7 +556,12 @@ def fetch_and_build_subscription_outbounds(
             filtered_nodes += 1
             continue
 
-        renamed = _apply_rename(original_name, rename_prefix=rename_prefix, replace_map=effective_replace_map)
+        renamed = _apply_rename(
+            original_name,
+            rename_prefix=rename_prefix,
+            replace_map=effective_replace_map,
+            remove_flag=remove_flag,
+        )
         updated = dict(row)
         updated["tag"] = renamed
         outbounds.append(updated)

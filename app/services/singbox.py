@@ -238,6 +238,7 @@ def outbound_to_singbox_outbound(
     outbound: dict[str, Any],
     *,
     available_node_tags: list[str] | None = None,
+    aggregate_tags: list[str] | None = None,
 ) -> dict[str, Any]:
     payload = dict(outbound.get("payload") or {})
 
@@ -249,15 +250,32 @@ def outbound_to_singbox_outbound(
     outbound_type = _normalize_outbound_type(str(outbound.get("type") or ""))
 
     if include_all_nodes and outbound_type in {"selector", "urltest"}:
+        aggregate_tag_set = {
+            str(item or "").strip()
+            for item in (aggregate_tags or [])
+            if str(item or "").strip()
+        }
+        # When includeAllNodes is enabled, node tags should come from provider/static caches
+        # at generation time. Persisted payload only keeps aggregate refs.
+        manual_aggregate_refs = [
+            ref
+            for ref in _normalize_outbound_tag_list(payload.get("outbounds"))
+            if ref in aggregate_tag_set and ref != tag
+        ]
         merged = _merge_outbound_tags(
-            _normalize_outbound_tag_list(payload.get("outbounds")),
+            manual_aggregate_refs,
             list(available_node_tags or []),
         )
         payload["outbounds"] = merged
 
-        default_tag = str(payload.get("default") or "").strip()
-        if not default_tag and merged:
-            payload["default"] = merged[0]
+        if outbound_type == "selector":
+            default_tag = str(payload.get("default") or "").strip()
+            if (not default_tag or default_tag not in merged) and merged:
+                payload["default"] = merged[0]
+
+    if outbound_type == "urltest":
+        # `urltest` does not support `default` in sing-box config.
+        payload.pop("default", None)
 
     result: dict[str, Any] = {
         "tag": tag,
@@ -284,16 +302,31 @@ def build_overlay(
         for item in (resolved_subscription_outbounds + resolved_static_outbounds)
         if str(item.get("tag") or "").strip()
     ]
+    enabled_aggregate_tags = [
+        str(item.get("tag") or "").strip()
+        for item in outbounds
+        if item.get("enabled") and str(item.get("tag") or "").strip()
+    ]
 
     enabled_outbounds = [
-        outbound_to_singbox_outbound(item, available_node_tags=available_node_tags)
+        outbound_to_singbox_outbound(
+            item,
+            available_node_tags=available_node_tags,
+            aggregate_tags=enabled_aggregate_tags,
+        )
         for item in outbounds
         if item.get("enabled")
     ]
 
     merged_outbounds: dict[str, dict[str, Any]] = {}
     for item in resolved_subscription_outbounds + resolved_static_outbounds + enabled_outbounds:
-        merged_outbounds[str(item["tag"])] = item
+        tag = str(item.get("tag") or "").strip()
+        if not tag:
+            continue
+        # Last write wins and also moves to tail to preserve category ordering.
+        if tag in merged_outbounds:
+            merged_outbounds.pop(tag)
+        merged_outbounds[tag] = item
 
     return {
         "outbounds": list(merged_outbounds.values()),

@@ -12,6 +12,7 @@ class SubscriptionCreate(BaseModel):
     enabled: bool = True
     user_agent: str = Field(default="", max_length=500)
     rename_prefix: str = Field(default="", max_length=128)
+    remove_flag: bool = False
     include_keywords: list[str] = Field(default_factory=list)
     exclude_keywords: list[str] = Field(default_factory=list)
     note: str = Field(default="", max_length=500)
@@ -23,6 +24,7 @@ class SubscriptionUpdate(BaseModel):
     enabled: bool | None = None
     user_agent: str | None = Field(default=None, max_length=500)
     rename_prefix: str | None = Field(default=None, max_length=128)
+    remove_flag: bool | None = None
     include_keywords: list[str] | None = None
     exclude_keywords: list[str] | None = None
     note: str | None = Field(default=None, max_length=500)
@@ -35,6 +37,7 @@ class SubscriptionOut(BaseModel):
     enabled: bool
     user_agent: str
     rename_prefix: str
+    remove_flag: bool
     include_keywords: list[str]
     exclude_keywords: list[str]
     node_count: int

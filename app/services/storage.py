@@ -90,6 +90,7 @@ def _normalize_subscription(item: dict[str, Any]) -> dict[str, Any]:
         "enabled": bool(item.get("enabled", True)),
         "user_agent": str(item.get("user_agent") or ""),
         "rename_prefix": str(item.get("rename_prefix") or ""),
+        "remove_flag": bool(item.get("remove_flag", False)),
         "include_keywords": _normalize_keyword_list(item.get("include_keywords")),
         "exclude_keywords": _normalize_keyword_list(item.get("exclude_keywords")),
         "cached_outbounds": cached_outbounds,
@@ -117,7 +118,7 @@ def list_subscriptions() -> list[dict[str, Any]]:
     state = read_provider_state()
     items = _subscriptions_section(state)["items"]
     rows = [_normalize_subscription(item) for item in items if isinstance(item, dict)]
-    rows.sort(key=lambda item: item["updated_at"], reverse=True)
+    rows.sort(key=lambda item: int(item.get("id") or 0))
     return rows
 
 
@@ -174,6 +175,7 @@ def create_subscription(payload: SubscriptionCreate) -> dict[str, Any]:
             "enabled": bool(payload.enabled),
             "user_agent": payload.user_agent.strip(),
             "rename_prefix": payload.rename_prefix.strip(),
+            "remove_flag": bool(payload.remove_flag),
             "include_keywords": _normalize_keyword_list(payload.include_keywords),
             "exclude_keywords": _normalize_keyword_list(payload.exclude_keywords),
             "cached_outbounds": [],
@@ -211,6 +213,9 @@ def update_subscription(subscription_id: int, payload: SubscriptionUpdate) -> di
             "rename_prefix": payload.rename_prefix.strip()
             if payload.rename_prefix is not None
             else str(existing.get("rename_prefix") or ""),
+            "remove_flag": payload.remove_flag
+            if payload.remove_flag is not None
+            else bool(existing.get("remove_flag", False)),
             "include_keywords": _normalize_keyword_list(payload.include_keywords)
             if payload.include_keywords is not None
             else _normalize_keyword_list(existing.get("include_keywords")),
@@ -268,6 +273,7 @@ def save_subscription_sync_result(
             "enabled": bool(existing.get("enabled", True)),
             "user_agent": str(existing.get("user_agent") or ""),
             "rename_prefix": str(existing.get("rename_prefix") or ""),
+            "remove_flag": bool(existing.get("remove_flag", False)),
             "include_keywords": _normalize_keyword_list(existing.get("include_keywords")),
             "exclude_keywords": _normalize_keyword_list(existing.get("exclude_keywords")),
             "cached_outbounds": cleaned_outbounds,
@@ -287,13 +293,14 @@ def save_subscription_sync_result(
 def list_subscription_cached_outbounds(enabled_only: bool = True) -> list[dict[str, Any]]:
     state = read_provider_state()
     items = _subscriptions_section(state)["items"]
+    ordered_items = sorted(
+        [item for item in items if isinstance(item, dict)],
+        key=lambda item: int(item.get("id") or 0),
+    )
     outbounds: list[dict[str, Any]] = []
     used_tags: set[str] = set()
 
-    for raw_item in items:
-        if not isinstance(raw_item, dict):
-            continue
-
+    for raw_item in ordered_items:
         subscription = _normalize_subscription(raw_item)
         if enabled_only and not subscription["enabled"]:
             continue

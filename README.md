@@ -7,7 +7,7 @@
 - 订阅管理：
   - 保存原始订阅 URL
   - 支持自定义 `User-Agent`
-  - 支持重命名前缀、全局 replace map、全局 filter
+  - 支持重命名前缀、去掉国旗、全局 replace map、全局 filter
   - 支持单条/批量拉取并解析订阅
   - 将拉取结果缓存为可直接写入 `sing-box` 的 outbounds
 - 静态梯子管理：
@@ -16,7 +16,7 @@
   - 与订阅节点一起参与最终 outbounds 合并
 - Outbounds 管理（聚合类型）：
   - 面板仅展示和维护聚合 outbound（`selector` / `url-test(urltest)` / `direct`）
-  - 支持 `includeAllNodes`，自动并入订阅节点 + 静态梯子节点
+  - 支持 `includeAllNodes`，生成时自动并入订阅节点 + 静态梯子节点（节点引用不依赖 `dispatch_state.json` 持久化 tag）
 - 生成下载：
   - `/downloads/subscriptions.txt`（订阅原始地址清单）
   - `/downloads/subscription-outbounds.json`（订阅解析后的 sing-box outbounds）
@@ -99,10 +99,12 @@ make production
 
 - 面板只负责订阅、静态梯子、聚合 outbounds。
 - `data/dispatch_state.json` 的 `outbounds.items` 仅保留聚合类型（`selector` / `urltest` / `direct`）；启动时会自动清理历史误存的节点型 outbound。
+- 若聚合 outbound 的 `payload.outbounds` 中存在历史节点 tag，启动时会自动迁移为 `includeAllNodes=true` 并仅保留聚合引用。
 - `data/provider.json` 存储订阅及其缓存节点，同时也存储 `static_ladders`。
 - 分流规则、`rule_set`、DNS、实验配置等请直接写在 `data/base_config.json`。
 - `/downloads/singbox-overlay.json` 会读取 `data/base_config.json`，并将最终 `outbounds` 覆盖写入。
 - `/downloads/clash.yaml` 会读取 `data/clash_template.json`，并将 `proxies` 覆盖写入。
 - 覆盖顺序为：订阅节点 -> 静态梯子 -> 已启用聚合 outbounds（同 tag 后者覆盖前者）。
+- 最终生成 `outbounds` 的顺序为：订阅节点（按订阅 ID 升序）-> 静态梯子 -> 聚合 outbounds（按 ID 升序）。
 - 若 `data/base_config.json` 不存在，启动时会自动创建默认文件。
 - 若 `data/clash_template.json` 不存在，启动时会自动创建默认文件。
