@@ -239,6 +239,25 @@
           </div>
         </section>
       </div>
+
+      <div id="singboxCheckErrorModal" class="modal" hidden>
+        <div class="modal-backdrop" data-modal-close="singboxCheckErrorModal"></div>
+        <section class="modal-card singbox-check-modal-card" role="dialog" aria-modal="true" aria-labelledby="singboxCheckErrorTitle">
+          <div class="modal-header">
+            <h3 id="singboxCheckErrorTitle">sing-box 静态检测失败</h3>
+            <button id="closeSingboxCheckErrorModalBtn" type="button" class="ghost">关闭</button>
+          </div>
+          <div class="modal-body singbox-check-modal-body">
+            <p id="singboxCheckErrorMessage" class="singbox-check-error-message">检测失败</p>
+            <label for="singboxCheckErrorDetail">错误详情</label>
+            <textarea id="singboxCheckErrorDetail" readonly></textarea>
+            <div class="actions">
+              <button id="copySingboxCheckErrorBtn" type="button" class="ghost">复制错误信息</button>
+              <button id="closeSingboxCheckErrorBtn" type="button">关闭</button>
+            </div>
+          </div>
+        </section>
+      </div>
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>

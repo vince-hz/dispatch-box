@@ -39,6 +39,12 @@ const outboundIncludeAllNodesInput = document.querySelector('#outboundIncludeAll
 const saveOutboundBtn = document.querySelector('#saveOutboundBtn');
 const cancelOutboundEditBtn = document.querySelector('#cancelOutboundEditBtn');
 
+const singboxCheckErrorModal = document.querySelector('#singboxCheckErrorModal');
+const closeSingboxCheckErrorModalBtn = document.querySelector('#closeSingboxCheckErrorModalBtn');
+const closeSingboxCheckErrorBtn = document.querySelector('#closeSingboxCheckErrorBtn');
+const copySingboxCheckErrorBtn = document.querySelector('#copySingboxCheckErrorBtn');
+const singboxCheckErrorMessage = document.querySelector('#singboxCheckErrorMessage');
+const singboxCheckErrorDetail = document.querySelector('#singboxCheckErrorDetail');
 const runSingboxCheckBtn = document.querySelector('#runSingboxCheckBtn');
 const previewOverlayResultBtn = document.querySelector('#previewOverlayResultBtn');
 const getOverlayDownloadLinkBtn = document.querySelector('#getOverlayDownloadLinkBtn');
@@ -350,6 +356,47 @@ function closeOutboundEditorModal() {
   if (!outboundEditorModal) return;
   outboundEditorModal.hidden = true;
   editingOutboundId = null;
+}
+
+function buildSingboxCheckErrorText(result) {
+  const message = `${result?.message || 'sing-box 静态检测失败'}`.trim();
+  const command = `${result?.command || 'sing-box check -c <generated-config>'}`.trim();
+  const exitCode = result?.exit_code === null || result?.exit_code === undefined ? 'N/A' : `${result.exit_code}`;
+  const checkedAt = `${result?.checked_at || ''}`.trim();
+  const stderr = `${result?.stderr || ''}`.trim();
+  const stdout = `${result?.stdout || ''}`.trim();
+
+  return [
+    `message: ${message}`,
+    `command: ${command}`,
+    `exit_code: ${exitCode}`,
+    `checked_at: ${checkedAt || 'N/A'}`,
+    '',
+    '[stderr]',
+    stderr || '(empty)',
+    '',
+    '[stdout]',
+    stdout || '(empty)',
+  ].join('\n');
+}
+
+function openSingboxCheckErrorModal(result) {
+  if (!singboxCheckErrorModal) return;
+
+  const message = `${result?.message || 'sing-box 静态检测失败'}`.trim();
+  if (singboxCheckErrorMessage) {
+    singboxCheckErrorMessage.textContent = message;
+  }
+  if (singboxCheckErrorDetail instanceof HTMLTextAreaElement) {
+    singboxCheckErrorDetail.value = buildSingboxCheckErrorText(result);
+    singboxCheckErrorDetail.scrollTop = 0;
+  }
+  singboxCheckErrorModal.hidden = false;
+}
+
+function closeSingboxCheckErrorModal() {
+  if (!singboxCheckErrorModal) return;
+  singboxCheckErrorModal.hidden = true;
 }
 
 function normalizeReplaceMapObject(rawValue) {
@@ -1099,8 +1146,53 @@ if (subEditorModal) {
   });
 }
 
+if (closeSingboxCheckErrorModalBtn) {
+  closeSingboxCheckErrorModalBtn.addEventListener('click', () => {
+    closeSingboxCheckErrorModal();
+  });
+}
+
+if (closeSingboxCheckErrorBtn) {
+  closeSingboxCheckErrorBtn.addEventListener('click', () => {
+    closeSingboxCheckErrorModal();
+  });
+}
+
+if (copySingboxCheckErrorBtn) {
+  copySingboxCheckErrorBtn.addEventListener('click', async () => {
+    const text = singboxCheckErrorDetail instanceof HTMLTextAreaElement ? singboxCheckErrorDetail.value : '';
+    if (!text) {
+      showToast('暂无可复制的错误信息', true);
+      return;
+    }
+
+    const copied = await copyText(text);
+    if (copied) {
+      showToast('错误信息已复制到剪贴板');
+      return;
+    }
+
+    window.prompt('复制错误信息', text);
+    showToast('已打开复制窗口');
+  });
+}
+
+if (singboxCheckErrorModal) {
+  singboxCheckErrorModal.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.dataset.modalClose === 'singboxCheckErrorModal') {
+      closeSingboxCheckErrorModal();
+    }
+  });
+}
+
 window.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
+  if (singboxCheckErrorModal && !singboxCheckErrorModal.hidden) {
+    closeSingboxCheckErrorModal();
+    return;
+  }
   if (outboundEditorModal && !outboundEditorModal.hidden) {
     closeOutboundEditorModal();
     return;
@@ -1380,11 +1472,24 @@ if (runSingboxCheckBtn) {
       const result = await api('/api/singbox/check', { method: 'POST' });
       const message = buildSingboxCheckMessage(result);
       setStatus(message, !result.ok);
-      showToast(message, !result.ok, result.ok ? 3000 : 5000);
+      if (result.ok) {
+        showToast(message, false, 3000);
+      } else {
+        openSingboxCheckErrorModal(result);
+        showToast('静态检测失败，已打开错误详情弹窗', true, 5000);
+      }
     } catch (error) {
       const message = `sing-box 静态检测请求失败: ${error.message}`;
       setStatus(message, true);
-      showToast(message, true, 5000);
+      openSingboxCheckErrorModal({
+        message,
+        command: 'POST /api/singbox/check',
+        exit_code: null,
+        stderr: `${error.message || ''}`,
+        stdout: '',
+        checked_at: new Date().toISOString(),
+      });
+      showToast('静态检测请求失败，已打开错误详情弹窗', true, 5000);
     } finally {
       if (runSingboxCheckBtn instanceof HTMLButtonElement) {
         runSingboxCheckBtn.disabled = false;
