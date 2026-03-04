@@ -50,22 +50,6 @@ make run
 - `make run` 会自动检查 `python3`、创建 `.venv`，并在首次启动或 `requirements.txt` 更新后自动安装依赖。
 - 如需只准备环境不启动服务，可运行 `make setup`。
 
-## Docker 部署
-
-```bash
-mkdir -p data
-make production
-```
-
-打开：`http://127.0.0.1:18080`（或你的服务器 IP）
-
-说明：
-- `make production` 会执行 `docker compose up -d --build`。
-- 数据目录通过 `./data:/app/data` 挂载，容器重建后数据仍保留。
-- 停止服务：`make production-down`
-- 查看日志：`make production-logs`
-- 如需修改端口，可在运行前设置 `DISPATCH_BOX_PORT`，例如：`DISPATCH_BOX_PORT=28080 make production`
-
 ## 环境变量
 
 - `DISPATCH_BOX_DOWNLOAD_TOKEN`：设置后，下载接口需带 `?token=...`

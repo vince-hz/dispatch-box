@@ -3,23 +3,17 @@ VENV_DIR ?= .venv
 VENV_PYTHON := $(VENV_DIR)/bin/python
 REQ_FILE ?= requirements.txt
 REQ_STAMP := $(VENV_DIR)/.requirements.stamp
-DOCKER ?= docker
-COMPOSE ?= $(DOCKER) compose
-COMPOSE_FILE ?= docker-compose.yml
 
 APP ?= app.main:app
 HOST ?= 127.0.0.1
 PORT ?= 18080
 
-.PHONY: run setup clean help production production-down production-logs
+.PHONY: run setup clean help
 
 help:
 	@echo "Targets:"
 	@echo "  make run    - Auto check env, install deps if needed, then start server"
 	@echo "  make setup  - Auto check env and install deps if needed"
-	@echo "  make production      - Build and run docker compose in background"
-	@echo "  make production-down - Stop docker compose services"
-	@echo "  make production-logs - Follow app logs from docker compose"
 	@echo "  make clean  - Remove virtual environment"
 
 setup:
@@ -38,15 +32,6 @@ setup:
 
 run: setup
 	$(VENV_PYTHON) -m uvicorn $(APP) --reload --host $(HOST) --port $(PORT)
-
-production:
-	$(COMPOSE) -f $(COMPOSE_FILE) up -d --build
-
-production-down:
-	$(COMPOSE) -f $(COMPOSE_FILE) down
-
-production-logs:
-	$(COMPOSE) -f $(COMPOSE_FILE) logs -f dispatch-box
 
 clean:
 	rm -rf $(VENV_DIR)

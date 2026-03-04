@@ -1,8 +1,6 @@
 services:
   dispatch-box:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: "${DISPATCH_BOX_IMAGE:-vincehz/dispatch-box:latest}"
     container_name: dispatch-box
     restart: unless-stopped
     ports:
