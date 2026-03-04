@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>dispatch-box</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+    <link rel="apple-touch-icon" href="/assets/icon.svg" />
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-logo">
+          <a href="/" class="brand-home-link" aria-label="返回首页">
+            <img src="/assets/icon.svg" alt="" class="brand-icon" />
+          </a>
+          <div class="brand-text">
+            <strong>dispatch-box</strong>
+            <span>订阅管理与 outbounds 聚合</span>
+          </div>
+        </div>
+        <div class="brand-actions">
+          <button id="getUpdatedOverlayDownloadLinkBtn" class="ghost brand-action" type="button">获取更新链接</button>
+          <button id="getOverlayDownloadLinkBtn" class="ghost brand-action" type="button">获取下载链接</button>
+        </div>
+      </div>
+      <p class="hint" id="statusText">准备就绪</p>
+    </header>
+
+    <main class="container">
+      <section class="page active" data-page="home">
+        <section class="card">
+          <div class="section-head">
+            <h2>机场订阅</h2>
+            <div class="section-head-actions">
+              <button id="updateAllSubsBtn" type="button" class="ghost">更新全部订阅</button>
+              <button id="openSubEditorBtn" type="button" class="ghost">管理订阅</button>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>名称</th>
+                <th>URL</th>
+                <th>UA</th>
+                <th>重命名</th>
+                <th>节点</th>
+                <th>同步状态</th>
+                <th>启用</th>
+                <th>备注</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="subTable"></tbody>
+          </table>
+        </section>
+
+
+
+        <section class="card">
+          <h2>静态梯子（JSON）</h2>
+          <form id="staticLadderForm" class="outbound-editor-form">
+            <label>
+              JSON 配置
+              <textarea
+                id="staticLadderConfig"
+                placeholder='例如 {"tag":"my-vps","type":"vless",...}'
+                required
+              ></textarea>
+            </label>
+            <label>
+              备注
+              <input id="staticLadderNote" placeholder="备注" />
+            </label>
+            <label class="check">
+              <input id="staticLadderEnabled" type="checkbox" checked />
+              启用
+            </label>
+            <div class="actions">
+              <button id="saveStaticLadderBtn" type="submit">添加静态梯子</button>
+              <button id="cancelStaticLadderEditBtn" type="button" class="ghost">取消编辑</button>
+            </div>
+          </form>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>tag</th>
+                <th>type</th>
+                <th>enabled</th>
+                <th>config</th>
+                <th>备注</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="staticLadderTable"></tbody>
+          </table>
+        </section>
+
+        <section class="card">
+          <div class="section-head">
+            <h2>Outbounds（仅聚合类型）</h2>
+            <div class="section-head-actions">
+              <button id="openOutboundCreateBtn" type="button" class="ghost">添加 outbound</button>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>tag</th>
+                <th>type</th>
+                <th>enabled</th>
+                <th>payload</th>
+                <th>备注</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="outboundTable"></tbody>
+          </table>
+          <datalist id="outboundTags"></datalist>
+        </section>
+      </section>
+
+      <div id="subEditorModal" class="modal" hidden>
+        <div class="modal-backdrop" data-modal-close="subEditorModal"></div>
+        <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="subEditorTitle">
+          <div class="modal-header">
+            <h3 id="subEditorTitle">订阅管理（新增 + 编辑）</h3>
+            <button id="closeSubEditorBtn" type="button" class="ghost">关闭</button>
+          </div>
+          <div class="modal-body">
+            <div class="sub-global-tools">
+              <section class="sub-global-rename">
+                <label for="subGlobalReplaceMapInput">全局节点重命名 replace map（JSON/JS 对象）</label>
+                <textarea
+                  id="subGlobalReplaceMapInput"
+                  placeholder="例如：{&quot;香港&quot;:&quot;HK&quot;,&quot;Singapore&quot;:&quot;SG&quot;}（支持 const map = {...};）"
+                ></textarea>
+                <div class="actions">
+                  <button id="saveSubReplaceMapBtn" type="button">保存全局替换</button>
+                </div>
+              </section>
+              <section class="sub-global-rename">
+                <label for="subGlobalFilterInput">全局节点 filter（JSON 或 JS 片段）</label>
+                <textarea
+                  id="subGlobalFilterInput"
+                  placeholder="例如：{&quot;available_flags&quot;:[&quot;HK&quot;,&quot;香港&quot;],&quot;exclude_flags&quot;:[&quot;4&quot;,&quot;实验&quot;]} 或 const availableFlags=[...]; const excludeFlags=[...];"
+                ></textarea>
+                <div class="actions">
+                  <button id="saveSubFilterBtn" type="button">保存全局过滤</button>
+                </div>
+              </section>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>名称</th>
+                  <th>URL</th>
+                  <th>UA</th>
+                  <th>重命名</th>
+                  <th>启用</th>
+                  <th>备注</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="subEditorTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <div id="outboundEditorModal" class="modal" hidden>
+        <div class="modal-backdrop" data-modal-close="outboundEditorModal"></div>
+        <section class="modal-card outbound-modal-card" role="dialog" aria-modal="true" aria-labelledby="outboundEditorTitle">
+          <div class="modal-header">
+            <h3 id="outboundEditorTitle">添加 outbound</h3>
+            <button id="closeOutboundEditorBtn" type="button" class="ghost">关闭</button>
+          </div>
+          <div class="modal-body">
+            <form id="outboundEditorForm" class="outbound-editor-form">
+              <label>
+                tag
+                <input id="outboundTag" required placeholder="tag，如 select" />
+              </label>
+              <label>
+                type
+                <select id="outboundType" required>
+                  <option value="selector">selector</option>
+                  <option value="urltest">url-test</option>
+                  <option value="direct">direct</option>
+                </select>
+              </label>
+              <label>
+                备注
+                <input id="outboundNote" placeholder="备注" />
+              </label>
+              <label class="check outbound-include-all">
+                <input id="outboundIncludeAllNodes" type="checkbox" />
+                includeAllNodes（自动合并本地缓存节点）
+              </label>
+              <label class="outbound-payload-label" for="outboundPayload">payload JSON</label>
+              <textarea
+                id="outboundPayload"
+                placeholder='例如 {"outbounds":["select","direct"],"default":"select","includeAllNodes":false}'
+              ></textarea>
+              <div class="actions">
+                <button id="saveOutboundBtn" type="submit">添加 outbound</button>
+                <button id="cancelOutboundEditBtn" type="button" class="ghost">取消</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>

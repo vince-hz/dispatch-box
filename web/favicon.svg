@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">dispatch-box icon</title>
+  <desc id="desc">A box with branching dispatch routes.</desc>
+  <defs>
+    <linearGradient id="bg" x1="52" y1="52" x2="460" y2="460" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0d5a40" />
+      <stop offset="1" stop-color="#1ea170" />
+    </linearGradient>
+    <linearGradient id="fg" x1="180" y1="150" x2="350" y2="374" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.98" />
+      <stop offset="1" stop-color="#e7fff4" stop-opacity="0.94" />
+    </linearGradient>
+  </defs>
+
+  <rect x="32" y="32" width="448" height="448" rx="112" fill="url(#bg)" />
+
+  <g fill="none" stroke="url(#fg)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M192 188L256 150L320 188L256 226L192 188Z" stroke-width="16" />
+    <path d="M192 188V254L256 292V226" stroke-width="16" />
+    <path d="M320 188V254L256 292" stroke-width="16" />
+
+    <path d="M256 292L166 360" stroke-width="14" />
+    <path d="M256 292V380" stroke-width="14" />
+    <path d="M256 292L346 360" stroke-width="14" />
+  </g>
+
+  <g fill="#ecfff6">
+    <circle cx="166" cy="360" r="17" />
+    <circle cx="256" cy="380" r="17" />
+    <circle cx="346" cy="360" r="17" />
+  </g>
+</svg>
