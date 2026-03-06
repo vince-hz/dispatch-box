@@ -64,7 +64,7 @@ docker-release:
 	fi
 	@TAG_VALUE="$(DOCKER_TAG)"; \
 	if [ -z "$$TAG_VALUE" ]; then TAG_VALUE="$(DOCKER_TAG_FROM_GOAL)"; fi; \
-	IMAGE="vince-hz/dispatch-box" \
+	IMAGE="vincehz/dispatch-box" \
 	TAG="$$TAG_VALUE" \
 	PUSH="$(DOCKER_PUSH)" \
 	LATEST="$(DOCKER_LATEST)" \

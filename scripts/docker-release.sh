@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-IMAGE="${IMAGE:-vince-hz/dispatch-box}"
+IMAGE="${IMAGE:-vincehz/dispatch-box}"
 TAG="${TAG:-}"
 LATEST="${LATEST:-1}"
 PUSH="${PUSH:-1}"
@@ -17,7 +17,7 @@ Usage:
   docker-release.sh [options]
 
 Options:
-  --image <name>       Docker image name, e.g. vince-hz/dispatch-box
+  --image <name>       Docker image name, e.g. vincehz/dispatch-box
   --tag <tag>          Docker tag. If omitted, uses current git short SHA
   --latest <bool>      Whether to also tag/push latest (default: 1)
   --push <bool>        Whether to push images after build (default: 1)
@@ -32,7 +32,10 @@ EOF
 }
 
 is_true() {
-  case "${1,,}" in
+  # macOS ships bash 3.2 by default; avoid bash 4+ `${var,,}` syntax.
+  local normalized
+  normalized="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "${normalized}" in
     1|true|yes|on) return 0 ;;
     0|false|no|off) return 1 ;;
     *)
