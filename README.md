@@ -52,7 +52,10 @@ make run
 
 ## 环境变量
 
-- `DISPATCH_BOX_DOWNLOAD_TOKEN`：设置后，下载接口需带 `?token=...`
+- `DISPATCH_BOX_DOWNLOAD_TOKEN`：设置后，开启全局访问鉴权（`/health` 除外）
+  - 首次访问任意页面/API 时需携带 `?token=...`
+  - 校验通过后服务端会设置 `HttpOnly` Cookie，后续同域请求无需重复拼 token
+  - 下载接口仍支持（且兼容）直接使用 `?token=...`
 - `SINGBOX_BIN`：可选，自定义 `sing-box` 可执行文件路径（默认：`sing-box`）
 
 ## API 摘要

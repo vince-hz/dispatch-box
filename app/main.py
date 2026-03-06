@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -84,6 +84,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+AUTH_COOKIE_NAME = "dispatch_box_token"
+
 
 @app.on_event("startup")
 def startup() -> None:
@@ -100,6 +102,32 @@ app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
 def _assert_download_token(token: str | None) -> None:
     if DOWNLOAD_TOKEN and token != DOWNLOAD_TOKEN:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+@app.middleware("http")
+async def require_global_token(request: Request, call_next):
+    if (
+        not DOWNLOAD_TOKEN
+        or request.url.path == "/health"
+        or request.method.upper() == "OPTIONS"
+    ):
+        return await call_next(request)
+
+    query_token = request.query_params.get("token")
+    cookie_token = request.cookies.get(AUTH_COOKIE_NAME)
+    token = query_token or cookie_token
+    if token != DOWNLOAD_TOKEN:
+        return PlainTextResponse(status_code=401, content="Invalid token")
+
+    response = await call_next(request)
+    if query_token == DOWNLOAD_TOKEN and cookie_token != DOWNLOAD_TOKEN:
+        response.set_cookie(
+            key=AUTH_COOKIE_NAME,
+            value=DOWNLOAD_TOKEN,
+            httponly=True,
+            samesite="lax",
+        )
+    return response
 
 
 def _json_attachment_response(payload: object, filename: str) -> Response:
