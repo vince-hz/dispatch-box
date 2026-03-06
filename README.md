@@ -50,6 +50,24 @@ make run
 - `make run` 会自动检查 `python3`、创建 `.venv`，并在首次启动或 `requirements.txt` 更新后自动安装依赖。
 - 如需只准备环境不启动服务，可运行 `make setup`。
 
+## Docker 发布
+
+默认会构建并推送两个标签：`<git-short-sha>` 和 `latest`。
+
+```bash
+make docker-release
+```
+
+常用参数：
+
+```bash
+# 位置参数指定版本号，并关闭 latest
+make docker-release v1.2.3 DOCKER_LATEST=0
+
+# 只本地构建，不推送
+make docker-release DOCKER_PUSH=0
+```
+
 ## 环境变量
 
 - `DISPATCH_BOX_DOWNLOAD_TOKEN`：设置后，开启全局访问鉴权（`/health` 除外）

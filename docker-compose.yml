@@ -1,6 +1,6 @@
 services:
   dispatch-box:
-    image: "${DISPATCH_BOX_IMAGE:-vincehz/dispatch-box:latest}"
+    image: "${DISPATCH_BOX_IMAGE:-vince-hz/dispatch-box:latest}"
     container_name: dispatch-box
     restart: unless-stopped
     ports:
