@@ -11,6 +11,7 @@ PORT ?= 18080
 DOCKER_TAG ?=
 DOCKER_PUSH ?= 1
 DOCKER_LATEST ?= 1
+DOCKER_PLATFORMS ?= linux/amd64,linux/arm64
 DOCKER_CONTEXT ?= .
 DOCKERFILE ?= Dockerfile
 
@@ -59,7 +60,7 @@ clean:
 
 docker-release:
 	@if [ -n "$(strip $(DOCKER_RELEASE_EXTRA_ARGS))" ]; then \
-		echo "Usage: make docker-release [vX.Y.Z] [DOCKER_PUSH=0] [DOCKER_LATEST=0]"; \
+		echo "Usage: make docker-release [vX.Y.Z] [DOCKER_PUSH=0] [DOCKER_LATEST=0] [DOCKER_PLATFORMS=linux/amd64,linux/arm64]"; \
 		exit 1; \
 	fi
 	@TAG_VALUE="$(DOCKER_TAG)"; \
@@ -68,6 +69,7 @@ docker-release:
 	TAG="$$TAG_VALUE" \
 	PUSH="$(DOCKER_PUSH)" \
 	LATEST="$(DOCKER_LATEST)" \
+	PLATFORMS="$(DOCKER_PLATFORMS)" \
 	CONTEXT="$(DOCKER_CONTEXT)" \
 	DOCKERFILE="$(DOCKERFILE)" \
 	./scripts/docker-release.sh

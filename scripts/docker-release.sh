@@ -8,6 +8,7 @@ IMAGE="${IMAGE:-vincehz/dispatch-box}"
 TAG="${TAG:-}"
 LATEST="${LATEST:-1}"
 PUSH="${PUSH:-1}"
+PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 CONTEXT="${CONTEXT:-$ROOT_DIR}"
 DOCKERFILE="${DOCKERFILE:-$ROOT_DIR/Dockerfile}"
 
@@ -21,6 +22,7 @@ Options:
   --tag <tag>          Docker tag. If omitted, uses current git short SHA
   --latest <bool>      Whether to also tag/push latest (default: 1)
   --push <bool>        Whether to push images after build (default: 1)
+  --platforms <list>   Target platforms for push buildx, e.g. linux/amd64,linux/arm64
   --context <path>     Docker build context (default: repo root)
   --dockerfile <path>  Dockerfile path (default: <repo>/Dockerfile)
   -h, --help           Show this help message
@@ -63,6 +65,10 @@ while [[ $# -gt 0 ]]; do
       PUSH="$2"
       shift 2
       ;;
+    --platforms)
+      PLATFORMS="$2"
+      shift 2
+      ;;
     --context)
       CONTEXT="$2"
       shift 2
@@ -102,24 +108,34 @@ if is_true "${LATEST}" && [[ "${TAG}" != "latest" ]]; then
   tags+=("latest")
 fi
 
-build_cmd=(docker build -f "${DOCKERFILE}")
-for t in "${tags[@]}"; do
-  build_cmd+=(-t "${IMAGE}:${t}")
-done
-build_cmd+=("${CONTEXT}")
-
-echo "Building Docker image..."
-echo "  Image: ${IMAGE}"
-echo "  Tags:  ${tags[*]}"
-"${build_cmd[@]}"
-
 if is_true "${PUSH}"; then
-  echo "Pushing Docker image..."
+  command -v docker >/dev/null 2>&1 || {
+    echo "Error: docker command not found in PATH." >&2
+    exit 1
+  }
+
+  build_cmd=(docker buildx build -f "${DOCKERFILE}" --platform "${PLATFORMS}")
   for t in "${tags[@]}"; do
-    echo "  -> ${IMAGE}:${t}"
-    docker push "${IMAGE}:${t}"
+    build_cmd+=(-t "${IMAGE}:${t}")
   done
+  build_cmd+=(--push "${CONTEXT}")
+
+  echo "Building and pushing Docker image..."
+  echo "  Image: ${IMAGE}"
+  echo "  Tags:  ${tags[*]}"
+  echo "  Platforms: ${PLATFORMS}"
+  "${build_cmd[@]}"
 else
+  build_cmd=(docker build -f "${DOCKERFILE}")
+  for t in "${tags[@]}"; do
+    build_cmd+=(-t "${IMAGE}:${t}")
+  done
+  build_cmd+=("${CONTEXT}")
+
+  echo "Building Docker image..."
+  echo "  Image: ${IMAGE}"
+  echo "  Tags:  ${tags[*]}"
+  "${build_cmd[@]}"
   echo "Skip push because PUSH=${PUSH}"
 fi
 
