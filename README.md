@@ -53,7 +53,7 @@ make run
 
 ## Docker 发布
 
-默认会构建并推送两个标签：`<git-short-sha>` 和 `latest`。
+默认会构建并推送到 GHCR，镜像为 `ghcr.io/vince-hz/dispatch-box`，标签为 `<git-short-sha>` 和 `latest`。默认只发布 `linux/amd64` 单架构。
 
 ```bash
 make docker-release
@@ -67,7 +67,15 @@ make docker-release v1.2.3 DOCKER_LATEST=0
 
 # 只本地构建，不推送
 make docker-release DOCKER_PUSH=0
+
+# 临时发布多架构
+make docker-release v1.2.3 DOCKER_PLATFORMS=linux/amd64,linux/arm64 DOCKER_SINGLE_PLATFORM_PUSH=0
+
+# 临时改回 Docker Hub 或其他 registry
+make docker-release v1.2.3 DOCKER_IMAGE=vincehz/dispatch-box
 ```
+
+本地 `docker compose up` 默认使用 `ghcr.io/vince-hz/dispatch-box:latest`，也可以通过 `DISPATCH_BOX_IMAGE` 覆盖。
 
 ## 环境变量
 

@@ -4,11 +4,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-IMAGE="${IMAGE:-vincehz/dispatch-box}"
+IMAGE="${IMAGE:-ghcr.io/vince-hz/dispatch-box}"
 TAG="${TAG:-}"
 LATEST="${LATEST:-1}"
 PUSH="${PUSH:-1}"
-PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
+PLATFORMS="${PLATFORMS:-linux/amd64}"
+SINGLE_PLATFORM_PUSH="${SINGLE_PLATFORM_PUSH:-1}"
 CONTEXT="${CONTEXT:-$ROOT_DIR}"
 DOCKERFILE="${DOCKERFILE:-$ROOT_DIR/Dockerfile}"
 
@@ -18,11 +19,14 @@ Usage:
   docker-release.sh [options]
 
 Options:
-  --image <name>       Docker image name, e.g. vincehz/dispatch-box
+  --image <name>       Docker image name, e.g. ghcr.io/vince-hz/dispatch-box
   --tag <tag>          Docker tag. If omitted, uses current git short SHA
   --latest <bool>      Whether to also tag/push latest (default: 1)
   --push <bool>        Whether to push images after build (default: 1)
-  --platforms <list>   Target platforms for push buildx, e.g. linux/amd64,linux/arm64
+  --platforms <list>   Target platforms (default: linux/amd64)
+  --single-platform-push <bool>
+                       Build locally and push only one platform (default: 1).
+                       Requires --platforms to contain exactly one platform.
   --context <path>     Docker build context (default: repo root)
   --dockerfile <path>  Dockerfile path (default: <repo>/Dockerfile)
   -h, --help           Show this help message
@@ -69,6 +73,10 @@ while [[ $# -gt 0 ]]; do
       PLATFORMS="$2"
       shift 2
       ;;
+    --single-platform-push)
+      SINGLE_PLATFORM_PUSH="$2"
+      shift 2
+      ;;
     --context)
       CONTEXT="$2"
       shift 2
@@ -109,22 +117,40 @@ if is_true "${LATEST}" && [[ "${TAG}" != "latest" ]]; then
 fi
 
 if is_true "${PUSH}"; then
-  command -v docker >/dev/null 2>&1 || {
-    echo "Error: docker command not found in PATH." >&2
-    exit 1
-  }
+  if is_true "${SINGLE_PLATFORM_PUSH}"; then
+    if [[ "${PLATFORMS}" == *","* ]]; then
+      echo "Error: single-platform push requires exactly one platform, got: ${PLATFORMS}" >&2
+      exit 1
+    fi
 
-  build_cmd=(docker buildx build -f "${DOCKERFILE}" --platform "${PLATFORMS}")
-  for t in "${tags[@]}"; do
-    build_cmd+=(-t "${IMAGE}:${t}")
-  done
-  build_cmd+=(--push "${CONTEXT}")
+    build_cmd=(docker build -f "${DOCKERFILE}" --platform "${PLATFORMS}")
+    for t in "${tags[@]}"; do
+      build_cmd+=(-t "${IMAGE}:${t}")
+    done
+    build_cmd+=("${CONTEXT}")
 
-  echo "Building and pushing Docker image..."
-  echo "  Image: ${IMAGE}"
-  echo "  Tags:  ${tags[*]}"
-  echo "  Platforms: ${PLATFORMS}"
-  "${build_cmd[@]}"
+    echo "Building and pushing single-platform Docker image..."
+    echo "  Image: ${IMAGE}"
+    echo "  Tags:  ${tags[*]}"
+    echo "  Platform: ${PLATFORMS}"
+    "${build_cmd[@]}"
+
+    for t in "${tags[@]}"; do
+      docker push --platform "${PLATFORMS}" "${IMAGE}:${t}"
+    done
+  else
+    build_cmd=(docker buildx build -f "${DOCKERFILE}" --platform "${PLATFORMS}")
+    for t in "${tags[@]}"; do
+      build_cmd+=(-t "${IMAGE}:${t}")
+    done
+    build_cmd+=(--push "${CONTEXT}")
+
+    echo "Building and pushing Docker image..."
+    echo "  Image: ${IMAGE}"
+    echo "  Tags:  ${tags[*]}"
+    echo "  Platforms: ${PLATFORMS}"
+    "${build_cmd[@]}"
+  fi
 else
   build_cmd=(docker build -f "${DOCKERFILE}")
   for t in "${tags[@]}"; do
