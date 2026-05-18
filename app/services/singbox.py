@@ -616,6 +616,45 @@ def _share_hysteria2(outbound: dict[str, Any]) -> str | None:
     return f"hy2://{server}:{port}{_build_query(query)}#{quote(tag, safe='')}"
 
 
+def _share_anytls(outbound: dict[str, Any]) -> str | None:
+    server = _format_uri_host(_string(outbound.get("server")))
+    port = _safe_int(outbound.get("server_port"), 0)
+    password = _string(outbound.get("password"))
+    tag = _string(outbound.get("tag")) or f"{server}:{port}"
+    if not server or port <= 0 or not password:
+        return None
+
+    query: dict[str, Any] = {}
+    tls_raw = outbound.get("tls")
+    tls = tls_raw if isinstance(tls_raw, dict) else {}
+    if tls.get("server_name"):
+        query["sni"] = tls.get("server_name")
+    if isinstance(tls.get("alpn"), list):
+        alpn = [str(item).strip() for item in tls.get("alpn") if str(item).strip()]
+        if alpn:
+            query["alpn"] = ",".join(alpn)
+    if tls.get("insecure"):
+        query["insecure"] = "1"
+
+    utls_raw = tls.get("utls")
+    utls = utls_raw if isinstance(utls_raw, dict) else {}
+    if utls.get("enabled") and utls.get("fingerprint"):
+        query["fp"] = utls.get("fingerprint")
+
+    if outbound.get("idle_session_check_interval"):
+        query["idle_session_check_interval"] = outbound.get("idle_session_check_interval")
+    if outbound.get("idle_session_timeout"):
+        query["idle_session_timeout"] = outbound.get("idle_session_timeout")
+    if outbound.get("min_idle_session") is not None:
+        query["min_idle_session"] = outbound.get("min_idle_session")
+
+    return (
+        f"anytls://{quote(password, safe='')}@{server}:{port}"
+        f"{_build_query(query)}"
+        f"#{quote(tag, safe='')}"
+    )
+
+
 def singbox_outbound_to_share_link(outbound: dict[str, Any]) -> str | None:
     outbound_type = _string(outbound.get("type")).lower()
     if outbound_type == "shadowsocks":
@@ -628,6 +667,8 @@ def singbox_outbound_to_share_link(outbound: dict[str, Any]) -> str | None:
         return _share_vless(outbound)
     if outbound_type == "hysteria2":
         return _share_hysteria2(outbound)
+    if outbound_type == "anytls":
+        return _share_anytls(outbound)
     return None
 
 

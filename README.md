@@ -35,6 +35,7 @@
 - `vmess://`
 - `vless://`
 - `hysteria2://` / `hy2://`
+- `anytls://`
 
 如果某些节点行无法识别，会记录在拉取结果的 `warnings` 中。
 

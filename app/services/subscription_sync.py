@@ -12,7 +12,15 @@ from .state_store import DEFAULT_SUBSCRIPTION_REPLACE_MAP
 
 DEFAULT_SUBSCRIPTION_UA = "Mozilla/5.0 (compatible; dispatch-box/1.0)"
 
-_SUPPORTED_SCHEMES = ("ss://", "trojan://", "vmess://", "vless://", "hysteria2://", "hy2://")
+_SUPPORTED_SCHEMES = (
+    "ss://",
+    "trojan://",
+    "vmess://",
+    "vless://",
+    "hysteria2://",
+    "hy2://",
+    "anytls://",
+)
 
 # Follows the rename intent from vince-rule-store/scripts/provider-rename.js
 _REPLACE_MAP_DEFAULT: dict[str, str] = dict(DEFAULT_SUBSCRIPTION_REPLACE_MAP)
@@ -432,6 +440,101 @@ def _parse_hysteria2_url(line: str) -> dict[str, Any]:
     return result
 
 
+def _first_query_value(params: dict[str, list[str]], *keys: str) -> str:
+    for key in keys:
+        value = (params.get(key) or [""])[0].strip()
+        if value:
+            return value
+    return ""
+
+
+def _parse_duration_field(
+    params: dict[str, list[str]],
+    result: dict[str, Any],
+    field_name: str,
+    *keys: str,
+) -> None:
+    value = _first_query_value(params, *keys)
+    if value:
+        result[field_name] = value
+
+
+def _parse_anytls_url(line: str) -> dict[str, Any]:
+    parsed = urlparse(line)
+    if parsed.scheme != "anytls":
+        raise ValueError("invalid anytls uri")
+
+    host = parsed.hostname or ""
+    port = int(parsed.port or 443)
+    params = parse_qs(parsed.query, keep_blank_values=True)
+    username = unquote(parsed.username or "")
+    password_suffix = f":{unquote(parsed.password)}" if parsed.password else ""
+    password = f"{username}{password_suffix}".strip() or _first_query_value(params, "auth", "password")
+    if not host or not port or not password:
+        raise ValueError("invalid anytls auth/target")
+
+    node_name = _name_from_fragment(parsed.fragment, f"{host}:{port}")
+    result: dict[str, Any] = {
+        "type": "anytls",
+        "tag": node_name,
+        "server": host,
+        "server_port": port,
+        "password": password,
+    }
+
+    tls: dict[str, Any] = {"enabled": True}
+    sni = _first_query_value(params, "sni", "peer", "server_name", "servername")
+    if sni:
+        tls["server_name"] = sni
+
+    alpn_raw = _first_query_value(params, "alpn")
+    if alpn_raw:
+        alpn = [part.strip() for part in alpn_raw.split(",") if part.strip()]
+        if alpn:
+            tls["alpn"] = alpn
+
+    insecure_raw = _first_query_value(
+        params,
+        "insecure",
+        "allowInsecure",
+        "allow_insecure",
+        "skip-cert-verify",
+    )
+    if _parse_bool(insecure_raw, False):
+        tls["insecure"] = True
+
+    fingerprint = _first_query_value(params, "fp", "fingerprint", "client-fingerprint", "clientFingerprint")
+    if fingerprint:
+        tls["utls"] = {
+            "enabled": True,
+            "fingerprint": fingerprint,
+        }
+
+    result["tls"] = tls
+    _parse_duration_field(
+        params,
+        result,
+        "idle_session_check_interval",
+        "idleSessionCheckInterval",
+        "idle_session_check_interval",
+        "idle-session-check-interval",
+    )
+    _parse_duration_field(
+        params,
+        result,
+        "idle_session_timeout",
+        "idleSessionTimeout",
+        "idle_session_timeout",
+        "idle-session-timeout",
+    )
+
+    min_idle_session = _first_query_value(params, "minIdleSession", "min_idle_session", "min-idle-session")
+    if min_idle_session:
+        result["min_idle_session"] = int(min_idle_session)
+
+    return result
+
+
 def _parse_line(line: str) -> dict[str, Any]:
     lowered = line.lower()
     if lowered.startswith("ss://"):
@@ -444,6 +547,8 @@ def _parse_line(line: str) -> dict[str, Any]:
         return _parse_vless_url(line)
     if lowered.startswith("hysteria2://") or lowered.startswith("hy2://"):
         return _parse_hysteria2_url(line)
+    if lowered.startswith("anytls://"):
+        return _parse_anytls_url(line)
     raise ValueError("unsupported node type")
 
 
@@ -544,7 +649,7 @@ def fetch_and_build_subscription_outbounds(
 
     if not parsed_rows:
         raise SubscriptionSyncError(
-            "未解析到可用节点（当前支持 ss/trojan/vmess/vless/hysteria2）"
+            "未解析到可用节点（当前支持 ss/trojan/vmess/vless/hysteria2/anytls）"
         )
 
     filtered_nodes = 0
